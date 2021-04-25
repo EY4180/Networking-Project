@@ -20,6 +20,7 @@ import sys
 import tiles
 import threading
 import random
+import time
 
 PLAYERS_PER_GAME = 2
 
@@ -68,6 +69,9 @@ def lobby_thread(queue, lobby):
     while (len(queue) < PLAYERS_PER_GAME):
         continue
 
+    # can we start a game with less than four players ?
+    #lobbySize = tiles.PLAYER_LIMIT
+
     for _ in range(PLAYERS_PER_GAME):
         playerIndex = random.randrange(0, len(queue))
         player = queue.pop(playerIndex)
@@ -114,9 +118,9 @@ def game_thread(queue, lobby):
         chunk = currentPlayer.connection.recv(4096)
         if not chunk:
             print('client {} disconnected'.format(
-                currentPlayer.address))
+                currentPlayer.getName()))
             return
-
+            
         buffer.extend(chunk)
 
         while True:
@@ -228,6 +232,8 @@ while True:
     gameThread.join()
 
     playerLobby.clear()
+
+    time.sleep(5)
     # handle each new connection independently
     # connection, client_address = sock.accept()
     # print('received connection from {}'.format(client_address))
