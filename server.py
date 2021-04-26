@@ -199,7 +199,7 @@ def game_thread(queue: list, lobby: list):
     currentPlayer = lobby[0]
     boradcastCurrentPlayer([*queue, *lobby], currentPlayer)
     # stall program and play game here, stub for now
-    while len(lobby) > 1:
+    while True:
         # start next turn
         if currentPlayer != lobby[0]:
             currentPlayer = lobby[0]
@@ -263,18 +263,19 @@ def game_thread(queue: list, lobby: list):
                                     [*queue, *lobby], positionupdates)
 
                                 lobby.append(lobby.pop(0))
-                                if currentPlayer not in playerGame:
-                                    playerGame.append(currentPlayer)
+                            if currentPlayer not in playerGame:
+                                playerGame.append(currentPlayer)
 
                                 if currentPlayer.idnum in eliminated:
                                     boradcastPlayerEliminated(
                                         [*queue, *lobby], currentPlayer)
                                     queue.append(currentPlayer)
                                     lobby.remove(currentPlayer)
-
-    queue.extend(lobby)
-    lobby.clear()
-    playerGame.clear()
+        if (len(lobby) == 1):
+            queue.extend(lobby)
+            lobby.clear()
+            playerGame.clear()
+            return
 
 
 # create a TCP/IP socket
