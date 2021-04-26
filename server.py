@@ -121,8 +121,9 @@ def update_status(queue: list, lobby: list):
                     if client in lobby:
                         lobby.remove(client)
                         # key issue here is that you cant broadcast this unless the player has played a tile, so if the user exits on entry you are screwed
-                        if client in playerGame:
-                            boradcastPlayerEliminated([*queue, *lobby], client)
+                        boradcastPlayerEliminated([*queue, *lobby], client)
+                        #if client in playerGame:
+                        #    boradcastPlayerEliminated([*queue, *lobby], client)
                     elif client in queue:
                         queue.remove(client)
 
