@@ -28,6 +28,7 @@ PLAYERS_PER_GAME = 4
 
 playerGame = []
 
+
 class Player():
     def __init__(self, connection, address, idnum):
         self.connection = connection
@@ -107,27 +108,29 @@ def update_status(queue: list, lobby: list):
 
     while True:
         activeSockets = []
-        activeClients = [*queue, *lobby]
-        for client in activeClients:
+        for client in [*queue, *lobby]:
             activeSockets.append(client.connection)
 
         try:
-            ready, _, _ = select.select(activeSockets, [], [], 0.1)
+            ready, _, _ = select.select(activeSockets, [], [], 0.5)
             for clientConnection in ready:
-                message = clientConnection.recv(1024)
+                message = clientConnection.recv(4096)
                 if not message:
-                    client = activeClients[activeSockets.index(
-                        clientConnection)]
-                    if client in lobby:
-                        lobby.remove(client)
-                        # key issue here is that you cant broadcast this unless the player has played a tile, so if the user exits on entry you are screwed
-                        boradcastPlayerEliminated([*queue, *lobby], client)
-                        #if client in playerGame:
-                        #    boradcastPlayerEliminated([*queue, *lobby], client)
-                    elif client in queue:
-                        queue.remove(client)
+                    for client in lobby:
+                        if client.connection == clientConnection:
+                            lobby.remove(client)
+                            # key issue here is that you cant broadcast this unless the player has played a tile, so if the user exits on entry you are screwed
+                            boradcastPlayerEliminated([*queue, *lobby], client)
+                            boradcastPlayerLeave([*queue, *lobby], client)
+                            # if client in playerGame:
+                            #    boradcastPlayerEliminated([*queue, *lobby], client)
+                            break
 
-                    boradcastPlayerLeave([*queue, *lobby], client)
+                    for client in queue:
+                        if client.connection == clientConnection:
+                            queue.remove(client)
+                            boradcastPlayerLeave([*queue, *lobby], client)
+                            break
         except:
             continue
 
