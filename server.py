@@ -69,11 +69,6 @@ def boradcastPositionUpdates(clients, updates):
         for update in updates:
             client.connection.send(update.pack())
 
-
-def rotate(list, n):
-    list = list[n:] + list[:n]
-
-
 def logging(queue: list, lobby: list):
     while True:
         # for windows
