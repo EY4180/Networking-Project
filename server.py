@@ -21,6 +21,7 @@ import tiles
 import threading
 import random
 import time
+import select
 
 PLAYERS_PER_GAME = 2
 
@@ -31,13 +32,57 @@ class Player():
         self.host, self.port = address
         self.idnum = idnum
 
+    def __eq__(self, other):
+        return self.idnum == other.idnum
+
     def getName(self):
         return '{}:{}'.format(self.host, self.port)
 
 
+def boradcastCurrentPlayer(clients, currentPlayer):
+    for client in clients:
+        msg = tiles.MessagePlayerTurn(currentPlayer.idnum).pack()
+        client.connection.send(msg)
+
+
+def boradcastPlayerEliminated(clients, player):
+    for client in clients:
+        msg = tiles.MessagePlayerEliminated(player.idnum).pack()
+        player.connection.send(msg)
+
+def boradcastPlayerLeave(clients, player):
+    for client in clients:
+        msg = tiles.MessagePlayerLeft(player.idnum).pack()
+        client.connection.send(msg)
+
 def rotate(list, n):
     return list[n:] + list[:n]
 
+
+def update_status(queue: list, lobby: list, socket):
+    while True:
+        activeSockets = []
+        activeClients = [*queue, *lobby]
+        for client in activeClients:
+            activeSockets.append(client.connection)
+
+        try:
+            # might want to add a lock here, or a barrier at the end
+            # of updating the player list
+            ready, _, _ = select.select(activeSockets, [], [], 0.1)
+            for clientConnection in ready:
+                message = clientConnection.recv(1024)
+                client = activeClients[activeSockets.index(clientConnection)]
+                if not message:
+                    print('client {} disconnected'.format(client.getName()))
+                    if client in lobby:
+                        lobby.remove(client)
+                    elif client in queue:
+                        queue.remove(client)
+
+                    boradcastPlayerLeave([*queue, *lobby], client)
+        except:
+            continue
 
 def update_queue(queue, lobby):
     # constantly check for new clients
@@ -70,19 +115,19 @@ def lobby_thread(queue, lobby):
         continue
 
     # can we start a game with less than four players ?
-    #lobbySize = tiles.PLAYER_LIMIT
+    # lobbySize = tiles.PLAYER_LIMIT
 
     for _ in range(PLAYERS_PER_GAME):
         playerIndex = random.randrange(0, len(queue))
         player = queue.pop(playerIndex)
         lobby.append(player)
         print('\t' + player.getName() +
-              " joined the lobby, id " + str(player.idnum))
+              " joined the lobby, id " + str(player.idnum) + " " + str(len(queue)))
 
     return
 
 
-def game_thread(queue, lobby):
+def game_thread(queue: list, lobby: list):
     activePlayers = lobby
 
     # notify all players of start
@@ -96,31 +141,28 @@ def game_thread(queue, lobby):
     # give all players a random hand
     for player in activePlayers:
         live_idnums.append(player.idnum)
-        print('\t' + player.getName() +
-              " in the game, id " + str(player.idnum))
-
         for _ in range(tiles.HAND_SIZE):
             tileid = tiles.get_random_tileid()
             msg = tiles.MessageAddTileToHand(tileid).pack()
             player.connection.send(msg)
 
-    # notify players of new turn
-    for player in [*queue, *activePlayers]:
-        msg = tiles.MessagePlayerTurn(currentPlayer.idnum).pack()
-        player.connection.send(msg)
+    # notify all players of new turn
+    boradcastCurrentPlayer([*queue, *activePlayers], currentPlayer)
 
     board = tiles.Board()
 
     buffer = bytearray()
+    eliminated = []
 
     # stall program and play game here, stub for now
-    while len(activePlayers) > 1:
+    while True:
+        for client in activePlayers:
+            if (client not in lobby):
+                activePlayers.remove(client)
+                live_idnums.remove(client.idnum)
+
+        currentPlayer = activePlayers[0]
         chunk = currentPlayer.connection.recv(4096)
-        if not chunk:
-            print('client {} disconnected'.format(
-                currentPlayer.getName()))
-            return
-            
         buffer.extend(chunk)
 
         while True:
@@ -137,7 +179,7 @@ def game_thread(queue, lobby):
             if isinstance(msg, tiles.MessagePlaceTile):
                 if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
                     # notify client that placement was successful
-                    for player in [*queue, *activePlayers]:
+                    for player in [*queue, *lobby]:
                         player.connection.send(msg.pack())
 
                     # check for token movement
@@ -145,14 +187,14 @@ def game_thread(queue, lobby):
                         live_idnums)
 
                     for msg in positionupdates:
-                        for player in [*queue, *activePlayers]:
+                        for player in [*queue, *lobby]:
                             player.connection.send(msg.pack())
 
                     if currentPlayer.idnum in eliminated:
                         activePlayers.pop(0)
-                        for player in [*queue, *activePlayers]:
-                            player.connection.send(
-                                tiles.MessagePlayerEliminated(currentPlayer.idnum).pack())
+                        live_idnums.remove(currentPlayer.idnum)
+                        boradcastPlayerEliminated(
+                            [*queue, *lobby], currentPlayer)
 
                     # pickup a new tile
                     tileid = tiles.get_random_tileid()
@@ -162,10 +204,8 @@ def game_thread(queue, lobby):
                     # start next turn
                     activePlayers = rotate(activePlayers, 1)
                     currentPlayer = activePlayers[0]
-                    for player in [*queue, *activePlayers]:
-                        msg = tiles.MessagePlayerTurn(
-                            currentPlayer.idnum).pack()
-                        player.connection.send(msg)
+                    boradcastCurrentPlayer(
+                        [*queue, *lobby], currentPlayer)
 
             # sent by the player in the second turn, to choose their token's
             # starting path
@@ -177,22 +217,20 @@ def game_thread(queue, lobby):
                             live_idnums)
 
                         for msg in positionupdates:
-                            for player in [*queue, *activePlayers]:
+                            for player in [*queue, *lobby]:
                                 player.connection.send(msg.pack())
 
                         if currentPlayer.idnum in eliminated:
                             activePlayers.pop(0)
-                            for player in [*queue, *activePlayers]:
-                                player.connection.send(
-                                    tiles.MessagePlayerEliminated(currentPlayer.idnum).pack())
+                            live_idnums.remove(currentPlayer.idnum)
+                            boradcastPlayerEliminated(
+                                [*queue, *lobby], currentPlayer)
 
                         # start next turn
                         activePlayers = rotate(activePlayers, 1)
                         currentPlayer = activePlayers[0]
-                        for player in [*queue, *activePlayers]:
-                            msg = tiles.MessagePlayerTurn(
-                                currentPlayer.idnum).pack()
-                            player.connection.send(msg)
+                        boradcastCurrentPlayer(
+                            [*queue, *lobby], currentPlayer)
 
 
 # create a TCP/IP socket
@@ -214,16 +252,20 @@ connectionThread = threading.Thread(
     target=update_queue, args=(playerQueue, playerLobby))
 connectionThread.start()
 
-
-# gameThread = threading.Thread(target=game_thread)
-# gameThread.start()
-
+# evaluate health of connections
+ststusThread = threading.Thread(
+    target=update_status, args=(playerQueue, playerLobby, socket))
+ststusThread.start()
+while True:
+    continue
 while True:
     # wait for lobby to be formed
     lobbyFormationThread = threading.Thread(
         target=lobby_thread, args=(playerQueue, playerLobby))
     lobbyFormationThread.start()
     lobbyFormationThread.join()
+    while True:
+        continue
 
     # start game and wait for completion
     gameThread = threading.Thread(
@@ -231,6 +273,7 @@ while True:
     gameThread.start()
     gameThread.join()
 
+    playerQueue.extend(playerLobby)
     playerLobby.clear()
 
     time.sleep(5)
