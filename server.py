@@ -26,12 +26,14 @@ from os import system, name
 
 PLAYERS_PER_GAME = 4
 
+playerGame = []
 
 class Player():
     def __init__(self, connection, address, idnum):
         self.connection = connection
         self.host, self.port = address
         self.idnum = idnum
+        self.moveCount = 0
 
     def __eq__(self, other):
         return self.idnum == other.idnum
@@ -69,6 +71,12 @@ def boradcastPositionUpdates(clients, updates):
         for update in updates:
             client.connection.send(update.pack())
 
+
+def boradcastCountdown(clients):
+    for client in clients:
+        client.connection.send(tiles.MessageCountdown().pack())
+
+
 def logging(queue: list, lobby: list):
     while True:
         # for windows
@@ -94,15 +102,9 @@ def logging(queue: list, lobby: list):
         time.sleep(1)
 
 
-'''
-    Manage the health of everyone connected to the server. If I have any sanity
-    left, I would have implemented a lock or memory barrier when checking the
-    connection status to stop any transmissions going to any players that have
-    disconnected
-'''
-
-
 def update_status(queue: list, lobby: list):
+    global playerGame
+
     while True:
         activeSockets = []
         activeClients = [*queue, *lobby]
@@ -113,11 +115,14 @@ def update_status(queue: list, lobby: list):
             ready, _, _ = select.select(activeSockets, [], [], 0.1)
             for clientConnection in ready:
                 message = clientConnection.recv(1024)
-                client = activeClients[activeSockets.index(clientConnection)]
                 if not message:
+                    client = activeClients[activeSockets.index(
+                        clientConnection)]
                     if client in lobby:
                         lobby.remove(client)
-                        boradcastPlayerEliminated([*queue, *lobby], client)
+                        # key issue here is that you cant broadcast this unless the player has played a tile, so if the user exits on entry you are screwed
+                        if client in playerGame:
+                            boradcastPlayerEliminated([*queue, *lobby], client)
                     elif client in queue:
                         queue.remove(client)
 
@@ -155,9 +160,8 @@ def lobby_thread(queue: list, lobby: list):
     while (len(queue) < 2):
         continue
 
+    boradcastCountdown([*queue, *lobby])
     lobbySize = min([len(queue), tiles.PLAYER_LIMIT])
-
-    lobby.clear()
 
     for _ in range(lobbySize):
         playerIndex = random.randrange(0, len(queue))
@@ -175,12 +179,11 @@ def get_live_idnums(lobby: list):
 
 
 def game_thread(queue: list, lobby: list):
-    # notify all players of start
-    for player in (queue + lobby):
-        player.connection.send(tiles.MessageGameStart().pack())
+    global playerGame
 
-    # start game here
-    currentPlayer = lobby[0]
+    # notify all players of start
+    for player in [*queue, *lobby]:
+        player.connection.send(tiles.MessageGameStart().pack())
 
     # give all players a random hand
     for player in lobby:
@@ -189,86 +192,89 @@ def game_thread(queue: list, lobby: list):
             msg = tiles.MessageAddTileToHand(tileid).pack()
             player.connection.send(msg)
 
-    # notify players of new turn
-    boradcastCurrentPlayer((queue + lobby), currentPlayer)
-
     board = tiles.Board()
 
     buffer = bytearray()
 
+    currentPlayer = lobby[0]
+    boradcastCurrentPlayer([*queue, *lobby], currentPlayer)
     # stall program and play game here, stub for now
+    while len(lobby) > 1:
+        # start next turn
+        if currentPlayer != lobby[0]:
+            currentPlayer = lobby[0]
+            boradcastCurrentPlayer([*queue, *lobby], currentPlayer)
 
-    while True:
+        ready, _, _ = select.select([currentPlayer.connection], [], [], 5)
+        for readyConnection in ready:
+            chunk = currentPlayer.connection.recv(4096)
+            if chunk:
+                buffer.extend(chunk)
 
-        chunk = currentPlayer.connection.recv(4096)
-        if chunk:
-            buffer.extend(chunk)
+                while True:
+                    live_idnums = get_live_idnums(lobby)
 
-            while True:
-                live_idnums = get_live_idnums(lobby)
+                    msg, consumed = tiles.read_message_from_bytearray(buffer)
+                    if not consumed:
+                        break
 
-                msg, consumed = tiles.read_message_from_bytearray(buffer)
-                if not consumed:
-                    break
+                    buffer = buffer[consumed:]
 
-                buffer = buffer[consumed:]
+                    # sent by the player to put a tile onto the board (in all turns except
+                    # their second)
+                    if isinstance(msg, tiles.MessagePlaceTile):
+                        if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
+                            # notify client that placement was successful
+                            for player in [*queue, *lobby]:
+                                player.connection.send(msg.pack())
 
-                # sent by the player to put a tile onto the board (in all turns except
-                # their second)
-                if isinstance(msg, tiles.MessagePlaceTile):
-                    if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
-                        # notify client that placement was successful
-                        for player in (queue + lobby):
-                            player.connection.send(msg.pack())
-
-                        # check for token movement
-                        positionupdates, eliminated = board.do_player_movement(
-                            live_idnums)
-
-                        boradcastPositionUpdates(
-                            (queue + lobby), positionupdates)
-
-                        lobby.append(lobby.pop(0))
-
-                        if currentPlayer.idnum in eliminated:
-                            boradcastPlayerEliminated(
-                                (queue + lobby), currentPlayer)
-                            queue.append(currentPlayer)
-                            lobby.remove(currentPlayer)                            
-
-                        # pickup a new tile
-                        tileid = tiles.get_random_tileid()
-                        currentPlayer.connection.send(
-                            tiles.MessageAddTileToHand(tileid).pack())
-
-                        # start next turn
-                        currentPlayer = lobby[0]
-                        boradcastCurrentPlayer((queue + lobby), currentPlayer)
-
-                # sent by the player in the second turn, to choose their token's
-                # starting path
-                elif isinstance(msg, tiles.MessageMoveToken):
-                    if not board.have_player_position(msg.idnum):
-                        if board.set_player_start_position(msg.idnum, msg.x, msg.y, msg.position):
                             # check for token movement
                             positionupdates, eliminated = board.do_player_movement(
                                 live_idnums)
 
                             boradcastPositionUpdates(
-                                (queue + lobby), positionupdates)
+                                [*queue, *lobby], positionupdates)
 
                             lobby.append(lobby.pop(0))
+                            if currentPlayer not in playerGame:
+                                playerGame.append(currentPlayer)
 
                             if currentPlayer.idnum in eliminated:
                                 boradcastPlayerEliminated(
-                                    (queue + lobby), currentPlayer)
+                                    [*queue, *lobby], currentPlayer)
                                 queue.append(currentPlayer)
                                 lobby.remove(currentPlayer)
 
-                            # start next turn
-                            currentPlayer = lobby[0]
-                            boradcastCurrentPlayer(
-                                (queue + lobby), currentPlayer)
+                            # pickup a new tile
+                            tileid = tiles.get_random_tileid()
+                            currentPlayer.connection.send(
+                                tiles.MessageAddTileToHand(tileid).pack())
+
+                    # sent by the player in the second turn, to choose their token's
+                    # starting path
+                    elif isinstance(msg, tiles.MessageMoveToken):
+                        if not board.have_player_position(msg.idnum):
+                            if board.set_player_start_position(msg.idnum, msg.x, msg.y, msg.position):
+                                # check for token movement
+                                positionupdates, eliminated = board.do_player_movement(
+                                    live_idnums)
+
+                                boradcastPositionUpdates(
+                                    [*queue, *lobby], positionupdates)
+
+                                lobby.append(lobby.pop(0))
+                                if currentPlayer not in playerGame:
+                                    playerGame.append(currentPlayer)
+
+                                if currentPlayer.idnum in eliminated:
+                                    boradcastPlayerEliminated(
+                                        [*queue, *lobby], currentPlayer)
+                                    queue.append(currentPlayer)
+                                    lobby.remove(currentPlayer)
+
+    queue.extend(lobby)
+    lobby.clear()
+    playerGame.clear()
 
 
 # create a TCP/IP socket
@@ -311,9 +317,6 @@ while True:
         target=game_thread, args=(playerQueue, playerLobby))
     gameThread.start()
     gameThread.join()
-
-    while True:
-        continue
 
     time.sleep(5)
     # handle each new connection independently
