@@ -138,6 +138,7 @@ def lobby_thread(queue, lobby:list):
 
     # can we start a game with less than four players ?
     # lobbySize = tiles.PLAYER_LIMIT
+    queue.extend(lobby)
     lobby.clear()
 
     for _ in range(PLAYERS_PER_GAME):
@@ -185,7 +186,7 @@ def game_thread(queue: list, lobby: list):
 
     # stall program and play game here, stub for now
     stop = False
-    while not stop:
+    while True:
         currentPlayer = lobby[0]
         chunk = lobby[0].connection.recv(4096)
         if chunk:
@@ -221,9 +222,6 @@ def game_thread(queue: list, lobby: list):
                             lobby.remove(currentPlayer)
                             queue.append(currentPlayer)
                         
-                        if len(eliminated) + 1 == PLAYERS_PER_GAME:
-                            return
-
                         # pickup a new tile
                         tileid = tiles.get_random_tileid()
                         currentPlayer.connection.send(
@@ -250,8 +248,6 @@ def game_thread(queue: list, lobby: list):
                                 lobby.remove(currentPlayer)
                                 queue.append(currentPlayer)
 
-                            if len(eliminated) + 1 == PLAYERS_PER_GAME:
-                                return
 
                             # start next turn
                             lobby = rotate(lobby, 1)
