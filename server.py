@@ -23,7 +23,7 @@ import random
 import time
 import select
 
-PLAYERS_PER_GAME = 2
+PLAYERS_PER_GAME = 4
 
 
 class Player():
@@ -97,10 +97,10 @@ def update_status(queue: list, lobby: list, socket):
                     print('client {} disconnected'.format(client.getName()))
                     if client in lobby:
                         lobby.remove(client)
+                        boradcastPlayerEliminated([*queue, *lobby], client)
                     elif client in queue:
                         queue.remove(client)
 
-                    boradcastPlayerEliminated([*queue, *lobby], client)
                     boradcastPlayerLeave([*queue, *lobby], client)
         except:
             continue
