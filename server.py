@@ -185,9 +185,7 @@ def get_live_idnums(lobby: list):
 def game_thread(queue: list, lobby: list):
     global playerGame
 
-    # notify all players of start
-    for player in [*queue, *lobby]:
-        player.connection.send(tiles.MessageGameStart().pack())
+    boradcastGameStart([*queue, *lobby])
 
     # give all players a random hand
     for player in lobby:
