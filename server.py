@@ -18,7 +18,7 @@
 import socket
 import sys
 import tiles
-import threading
+from threading import Thread
 import random
 import time
 import select
@@ -34,7 +34,7 @@ class Player():
         self.connection = connection
         self.host, self.port = address
         self.idnum = idnum
-        self.moveCount = 0
+        self.recentMessage = None
 
     def __eq__(self, other):
         return self.idnum == other.idnum
@@ -295,31 +295,26 @@ playerQueue = []
 playerLobby = []
 
 # constantly handle incomming connections
-connectionThread = threading.Thread(
-    target=update_queue, args=(playerQueue, playerLobby))
+connectionThread = Thread(target=update_queue, args=(playerQueue, playerLobby))
 connectionThread.start()
 
 # evaluate health of connections
-ststusThread = threading.Thread(
-    target=update_status, args=(playerQueue, playerLobby))
+ststusThread = Thread(target=update_status, args=(playerQueue, playerLobby))
 ststusThread.start()
 
-loggingThread = threading.Thread(
-    target=logging, args=(playerQueue, playerLobby))
+loggingThread = Thread(target=logging, args=(playerQueue, playerLobby))
 loggingThread.start()
 
 while True:
     # wait for players to fill the lobby
     # time.sleep(5)
 
-    lobbyFormationThread = threading.Thread(
-        target=lobby_thread, args=(playerQueue, playerLobby))
+    lobbyFormationThread = Thread(target=lobby_thread, args=(playerQueue, playerLobby))
     lobbyFormationThread.start()
     lobbyFormationThread.join()
 
     # start game
-    gameThread = threading.Thread(
-        target=game_thread, args=(playerQueue, playerLobby))
+    gameThread = Thread(target=game_thread, args=(playerQueue, playerLobby))
     gameThread.start()
     gameThread.join()
 
