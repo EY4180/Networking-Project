@@ -212,7 +212,14 @@ def update_queue(queue, lobby, sock):
 
 
 def lobby_thread(queue: list, lobby: list):
+    global tileHistory
+    global tokenHistory
+    global eliminatedPlayers
     global originalOrder
+    tileHistory.clear()
+    tokenHistory.clear()
+    eliminatedPlayers.clear()
+    originalOrder.clear()
     while (len(queue) < 2):
         continue
 
@@ -254,49 +261,67 @@ def game_thread(queue: list, lobby: list):
     # start main game loop
     board = tiles.Board()
     currentPlayer = None
+    startTime = None
     while len(lobby) != 1:
         # start next turn
         if currentPlayer is not lobby[0]:
             currentPlayer = lobby[0]
             boradcastCurrentPlayer(queue + lobby, currentPlayer)
+            startTime = time.time()
             
         try:
-            chunk = currentPlayer.messages.popleft()
-
+            chunk = None
+            if time.time() - startTime < 10:
+                chunk = currentPlayer.messages.popleft()
+                currentPlayer.messages.clear()
+            else:
+                # random token move
+                if board.have_player_position(currentPlayer.idnum):
+                    continue
+                # random tile placement
+                else:
+                    x, y = board.get_player_position(currentPlayer.idnum)
+                    tileid = 0
+                    rotation = 0
+                    chunk = tiles.MessagePlaceTile(currentPlayer.idnum, tileid, rotation, x, y).pack()
+                    
+                
+            
+            # this exception is not expected to happen with my design
             if not chunk:
                 raise Exception("Client Disconnected")
 
             buffer = bytearray()
             buffer.extend(chunk)
             msg, consumed = tiles.read_message_from_bytearray(buffer)
+            
+            # no idea how this exception could happen but included because 
+            # original code had it
             if not consumed:
                 raise Exception("Unable To Read Message")
 
             buffer = buffer[consumed:]
             
-            # sent by the player to put a tile onto the board (in all turns except
-            # their second)
             placingTile = isinstance(msg, tiles.MessagePlaceTile)
             selectingToken = isinstance(msg, tiles.MessageMoveToken)
             
-            if placingTile or selectingToken:
-                if placingTile:
-                    if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
-                        # notify client that placement was successful
-                        broadcastPlaceSuccessful(queue + lobby, msg)
+            if placingTile:
+                if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
+                    # notify client that placement was successful
+                    broadcastPlaceSuccessful(queue + lobby, msg)
 
-                        # pickup a new tile
-                        tileid = tiles.get_random_tileid()
-                        tilemsg = tiles.MessageAddTileToHand(tileid).pack()
-                        currentPlayer.connection.send(tilemsg)
+                    # pickup a new tile
+                    tileid = tiles.get_random_tileid()
+                    tilemsg = tiles.MessageAddTileToHand(tileid).pack()
+                    currentPlayer.connection.send(tilemsg)
 
+                    broadcastUpdates(lobby, queue, board, currentPlayer)
+
+            elif selectingToken:
+                if not board.have_player_position(msg.idnum):
+                    if board.set_player_start_position(msg.idnum, msg.x, msg.y, msg.position):
+                        tokenHistory.append(msg)
                         broadcastUpdates(lobby, queue, board, currentPlayer)
-
-                elif selectingToken:
-                    if not board.have_player_position(msg.idnum):
-                        if board.set_player_start_position(msg.idnum, msg.x, msg.y, msg.position):
-                            tokenHistory.append(msg)
-                            broadcastUpdates(lobby, queue, board, currentPlayer)
         except:
             continue
 
