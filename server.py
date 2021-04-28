@@ -244,6 +244,11 @@ def get_live_idnums(lobby: list):
 
     return live_idnums
 
+def first_move(board, currentPlayer, x, y):
+    for position in reversed(range(8)):
+        if board.set_player_start_position(currentPlayer.idnum, x, y, position):
+            break
+
 def random_move(currentPlayer: Player, board: tiles.Board):
     
     '''
@@ -291,29 +296,8 @@ def random_move(currentPlayer: Player, board: tiles.Board):
     tileid = random.randrange(0, tiles.HAND_SIZE)
     rotation = random.randrange(0, 4)
 
-    # is position in tile valid?
-    position = None
-
-    if x == 0 and y == 0:
-        position = 6 # 0
-    elif x == 0 and y == tiles.BOARD_HEIGHT - 1:
-        position = 0 # 6
-    elif y == 0 and x == tiles.BOARD_WIDTH - 1:
-        position = 4 # 2
-    elif y == tiles.BOARD_HEIGHT - 1 and x == tiles.BOARD_WIDTH - 1:
-        position == 2 # 4
-    elif y == 0:
-        position = 5 # 1
-    elif y == tiles.BOARD_HEIGHT:
-        position = 1 # 5
-    elif x == 0:
-        position = 7 # 7
-    else:
-        position = 3 # 3
-
-    board.set_player_start_position(currentPlayer.idnum, x, y, position)
     chunk = tiles.MessagePlaceTile(currentPlayer.idnum, tileid, rotation, x, y)
-    return chunk.pack()
+    return chunk.pack(), first_move
             
 def game_thread(queue: list, lobby: list):
     global tokenHistory
@@ -341,8 +325,9 @@ def game_thread(queue: list, lobby: list):
             
         try:
             chunk = None
+            auxillaryFunction = None
             if abs(time.time() - startTime) > 5:
-                chunk = random_move(currentPlayer, board)
+                chunk, auxillaryFunction = random_move(currentPlayer, board)
             else:
                 chunk = currentPlayer.messages.popleft()
                 currentPlayer.messages.clear()
@@ -367,6 +352,8 @@ def game_thread(queue: list, lobby: list):
             
             if placingTile:
                 if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
+                    auxillaryFunction(board, currentPlayer, msg.x, msg.y)
+
                     # notify client that placement was successful
                     broadcastPlaceSuccessful(queue + lobby, msg)
                     broadcastUpdates(lobby, queue, board, currentPlayer)
