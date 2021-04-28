@@ -244,7 +244,77 @@ def get_live_idnums(lobby: list):
 
     return live_idnums
 
+def random_move(currentPlayer: Player, board: tiles.Board):
+    
+    '''
+    chunk = None
+    # random tile placement
+    if board.have_player_position(currentPlayer.idnum):
+        chunk = None
+    else:
+        validCoordinates = []
+        edgeCoordinates = []
+        for x in range(tiles.BOARD_WIDTH):
+            for y in range(tiles.BOARD_HEIGHT):
+                validCoordinates.append((x, y))
+                edgeX = x in [0, tiles.BOARD_WIDTH - 1]
+                edgeY = y in [0, tiles.BOARD_HEIGHT - 1]
+                tile = board.get_tile(x, y)
+                if edgeX and edgeY and not tile:
+                    edgeCoordinates.append((x, y))
 
+
+        for x, y in validCoordinates:
+            _, _, playerID = board.get_tile(x, y)
+            if playerID == currentPlayer.idnum:
+                # choose a starting token position
+                break
+        else:
+            # place a tile at the edge
+            chunk = None
+    '''
+    validCoordinates = []
+    edgeCoordinates = []
+    for x in range(tiles.BOARD_WIDTH):
+        for y in range(tiles.BOARD_HEIGHT):
+            validCoordinates.append((x, y))
+
+    for x, y in validCoordinates:
+        edgeX = x in [0, tiles.BOARD_WIDTH - 1] and y in range(tiles.BOARD_HEIGHT)
+        edgeY = y in [0, tiles.BOARD_HEIGHT - 1] and x in range(tiles.BOARD_WIDTH)
+
+        tile, _, _ = board.get_tile(x, y)
+        if (edgeX or edgeY) and not tile:
+            edgeCoordinates.append((x, y))
+ 
+    x, y = edgeCoordinates[random.randrange(0, len(edgeCoordinates))]
+    tileid = random.randrange(0, tiles.HAND_SIZE)
+    rotation = random.randrange(0, 4)
+
+    # is position in tile valid?
+    position = None
+
+    if x == 0 and y == 0:
+        position = 6 # 0
+    elif x == 0 and y == tiles.BOARD_HEIGHT - 1:
+        position = 0 # 6
+    elif y == 0 and x == tiles.BOARD_WIDTH - 1:
+        position = 4 # 2
+    elif y == tiles.BOARD_HEIGHT - 1 and x == tiles.BOARD_WIDTH - 1:
+        position == 2 # 4
+    elif y == 0:
+        position = 5 # 1
+    elif y == tiles.BOARD_HEIGHT:
+        position = 1 # 5
+    elif x == 0:
+        position = 7 # 7
+    else:
+        position = 3 # 3
+
+    board.set_player_start_position(currentPlayer.idnum, x, y, position)
+    chunk = tiles.MessagePlaceTile(currentPlayer.idnum, tileid, rotation, x, y)
+    return chunk.pack()
+            
 def game_thread(queue: list, lobby: list):
     global tokenHistory
     # notify all players of start
@@ -271,22 +341,12 @@ def game_thread(queue: list, lobby: list):
             
         try:
             chunk = None
-            if time.time() - startTime < 10:
+            if abs(time.time() - startTime) > 5:
+                chunk = random_move(currentPlayer, board)
+            else:
                 chunk = currentPlayer.messages.popleft()
                 currentPlayer.messages.clear()
-            else:
-                # random token move
-                if board.have_player_position(currentPlayer.idnum):
-                    continue
-                # random tile placement
-                else:
-                    x, y = board.get_player_position(currentPlayer.idnum)
-                    tileid = 0
-                    rotation = 0
-                    chunk = tiles.MessagePlaceTile(currentPlayer.idnum, tileid, rotation, x, y).pack()
-                    
-                
-            
+                                         
             # this exception is not expected to happen with my design
             if not chunk:
                 raise Exception("Client Disconnected")
@@ -309,13 +369,12 @@ def game_thread(queue: list, lobby: list):
                 if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
                     # notify client that placement was successful
                     broadcastPlaceSuccessful(queue + lobby, msg)
+                    broadcastUpdates(lobby, queue, board, currentPlayer)
 
                     # pickup a new tile
                     tileid = tiles.get_random_tileid()
                     tilemsg = tiles.MessageAddTileToHand(tileid).pack()
                     currentPlayer.connection.send(tilemsg)
-
-                    broadcastUpdates(lobby, queue, board, currentPlayer)
 
             elif selectingToken:
                 if not board.have_player_position(msg.idnum):
