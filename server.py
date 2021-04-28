@@ -22,25 +22,24 @@ from threading import Thread
 import random
 import time
 import select
+import collections
 from os import system, name
 
 PLAYERS_PER_GAME = 4
-
-playerGame = []
-
 
 class Player():
     def __init__(self, connection, address, idnum):
         self.connection = connection
         self.host, self.port = address
         self.idnum = idnum
-        self.recentMessage = None
+        self.messages = collections.deque()
+        self.inGame = False
 
     def __eq__(self, other):
         return self.idnum == other.idnum
 
     def getName(self):
-        return '{}:{}'.format(self.host, self.port)
+        return '{}:{}'.format(self.host, self.port)        
 
 
 def boradcastCurrentPlayer(clients, currentPlayer):
@@ -104,33 +103,37 @@ def logging(queue: list, lobby: list):
 
 
 def update_status(queue: list, lobby: list):
-    global playerGame
-
     while True:
         activeSockets = []
         for client in [*queue, *lobby]:
             activeSockets.append(client.connection)
 
         try:
-            ready, _, _ = select.select(activeSockets, [], [], 0.5)
+            ready, _, _ = select.select(activeSockets, [], [], 0)
+
             for clientConnection in ready:
                 message = clientConnection.recv(4096)
-                if not message:
-                    for client in lobby:
-                        if client.connection == clientConnection:
+
+                for client in lobby:
+                    if client.connection == clientConnection:
+                        lobbyIndex = lobby.index(client)
+                        lobby[lobbyIndex].messages.appendleft(message)
+                        if not message:
                             lobby.remove(client)
                             # key issue here is that you cant broadcast this unless the player has played a tile, so if the user exits on entry you are screwed
-                            boradcastPlayerEliminated([*queue, *lobby], client)
+                            if client.inGame:
+                                boradcastPlayerEliminated([*queue, *lobby], client)
                             boradcastPlayerLeave([*queue, *lobby], client)
-                            # if client in playerGame:
-                            #    boradcastPlayerEliminated([*queue, *lobby], client)
-                            break
+                        break
 
-                    for client in queue:
-                        if client.connection == clientConnection:
+                for client in queue:
+                    if client.connection == clientConnection:
+                        queueIndex = queue.index(client)
+                        queue[queueIndex].messages.appendleft(message)
+                        if not message:
                             queue.remove(client)
                             boradcastPlayerLeave([*queue, *lobby], client)
-                            break
+                        break
         except:
             continue
 
@@ -183,8 +186,6 @@ def get_live_idnums(lobby: list):
 
 
 def game_thread(queue: list, lobby: list):
-    global playerGame
-
     # notify all players of start
     for player in [*queue, *lobby]:
         player.connection.send(tiles.MessageGameStart().pack())
@@ -208,11 +209,12 @@ def game_thread(queue: list, lobby: list):
         if currentPlayer != lobby[0]:
             currentPlayer = lobby[0]
             boradcastCurrentPlayer([*queue, *lobby], currentPlayer)
-
-        ready, _, _ = select.select([currentPlayer.connection], [], [], 5)
-        for readyConnection in ready:
-            chunk = currentPlayer.connection.recv(4096)
+        try:
+            chunk = currentPlayer.messages.popleft()
+            currentPlayer.messages.clear()
             if chunk:
+                lobby[0].inGame = True
+
                 buffer.extend(chunk)
 
                 while True:
@@ -240,8 +242,6 @@ def game_thread(queue: list, lobby: list):
                                 [*queue, *lobby], positionupdates)
 
                             lobby.append(lobby.pop(0))
-                            if currentPlayer not in playerGame:
-                                playerGame.append(currentPlayer)
 
                             if currentPlayer.idnum in eliminated:
                                 boradcastPlayerEliminated(
@@ -267,18 +267,20 @@ def game_thread(queue: list, lobby: list):
                                     [*queue, *lobby], positionupdates)
 
                                 lobby.append(lobby.pop(0))
-                            if currentPlayer not in playerGame:
-                                playerGame.append(currentPlayer)
 
                                 if currentPlayer.idnum in eliminated:
                                     boradcastPlayerEliminated(
                                         [*queue, *lobby], currentPlayer)
                                     queue.append(currentPlayer)
                                     lobby.remove(currentPlayer)
+        except:
+            continue
+
         if (len(lobby) == 1):
             queue.extend(lobby)
             lobby.clear()
-            playerGame.clear()
+            for x in range(len(queue)):
+                queue[x].inGame = False
             return
 
 
