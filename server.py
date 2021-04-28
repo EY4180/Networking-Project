@@ -244,40 +244,7 @@ def get_live_idnums(lobby: list):
 
     return live_idnums
 
-def first_move(board, currentPlayer, x, y):
-    for position in reversed(range(8)):
-        if board.set_player_start_position(currentPlayer.idnum, x, y, position):
-            break
-
 def random_move(currentPlayer: Player, board: tiles.Board):
-    
-    '''
-    chunk = None
-    # random tile placement
-    if board.have_player_position(currentPlayer.idnum):
-        chunk = None
-    else:
-        validCoordinates = []
-        edgeCoordinates = []
-        for x in range(tiles.BOARD_WIDTH):
-            for y in range(tiles.BOARD_HEIGHT):
-                validCoordinates.append((x, y))
-                edgeX = x in [0, tiles.BOARD_WIDTH - 1]
-                edgeY = y in [0, tiles.BOARD_HEIGHT - 1]
-                tile = board.get_tile(x, y)
-                if edgeX and edgeY and not tile:
-                    edgeCoordinates.append((x, y))
-
-
-        for x, y in validCoordinates:
-            _, _, playerID = board.get_tile(x, y)
-            if playerID == currentPlayer.idnum:
-                # choose a starting token position
-                break
-        else:
-            # place a tile at the edge
-            chunk = None
-    '''
     validCoordinates = []
     edgeCoordinates = []
     for x in range(tiles.BOARD_WIDTH):
@@ -293,11 +260,11 @@ def random_move(currentPlayer: Player, board: tiles.Board):
             edgeCoordinates.append((x, y))
  
     x, y = edgeCoordinates[random.randrange(0, len(edgeCoordinates))]
-    tileid = random.randrange(0, tiles.HAND_SIZE)
+    tileid = 2
     rotation = random.randrange(0, 4)
 
     chunk = tiles.MessagePlaceTile(currentPlayer.idnum, tileid, rotation, x, y)
-    return chunk.pack(), first_move
+    return chunk.pack()
             
 def game_thread(queue: list, lobby: list):
     global tokenHistory
@@ -325,9 +292,8 @@ def game_thread(queue: list, lobby: list):
             
         try:
             chunk = None
-            auxillaryFunction = None
             if abs(time.time() - startTime) > 5:
-                chunk, auxillaryFunction = random_move(currentPlayer, board)
+                chunk = random_move(currentPlayer, board)
             else:
                 chunk = currentPlayer.messages.popleft()
                 currentPlayer.messages.clear()
@@ -352,8 +318,6 @@ def game_thread(queue: list, lobby: list):
             
             if placingTile:
                 if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
-                    auxillaryFunction(board, currentPlayer, msg.x, msg.y)
-
                     # notify client that placement was successful
                     broadcastPlaceSuccessful(queue + lobby, msg)
                     broadcastUpdates(lobby, queue, board, currentPlayer)
