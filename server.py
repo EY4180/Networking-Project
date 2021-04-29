@@ -260,6 +260,8 @@ def random_move(currentPlayer: Player, board: tiles.Board):
             _, _, ownerID = board.get_tile(x, y)
             if ownerID == currentPlayer.idnum:
                 # choose a starting location (move 2)
+
+                tiles.MessageMoveToken(currentPlayer.idnum, x, y, 0)
                 break
         else:
             # place first tile (move 1)
