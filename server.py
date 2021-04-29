@@ -167,14 +167,18 @@ def update_queue(queue, lobby, sock):
     global originalOrder
     global eliminatedPlayers
     # constantly check for new clients
-    idnum = 0
     while True:
         # handle new connection
         connection, client_address = sock.accept()
 
+        # find avaliable id numbers
+        unusedID = list(range(tiles.IDNUM_LIMIT))
+        for client in lobby + queue:
+            unusedID.remove(client.idnum)
+
         # add player to queue
+        idnum = unusedID[0]
         newPlayer = Player(connection, client_address, idnum)
-        idnum += 1
 
         # send messages
         connection.send(tiles.MessageWelcome(newPlayer.idnum).pack())
@@ -396,8 +400,6 @@ loggingThread.start()
 
 while True:
     # wait for players to fill the lobby
-    # time.sleep(5)
-
     lobbyFormationThread = Thread(
         target=lobby_thread, args=(playerQueue, playerLobby))
     lobbyFormationThread.start()
