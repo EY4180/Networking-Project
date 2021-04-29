@@ -143,8 +143,7 @@ def update_status(queue: list, lobby: list):
 
                 for client in lobby:
                     if client.connection == clientConnection:
-                        lobbyIndex = lobby.index(client)
-                        lobby[lobbyIndex].messages.appendleft(message)
+                        client.messages.appendleft(message)
                         if not message:
                             lobby.remove(client)
                             boradcastPlayerEliminated([*queue, *lobby], client)
@@ -153,8 +152,7 @@ def update_status(queue: list, lobby: list):
 
                 for client in queue:
                     if client.connection == clientConnection:
-                        queueIndex = queue.index(client)
-                        queue[queueIndex].messages.appendleft(message)
+                        client.messages.appendleft(message)
                         if not message:
                             queue.remove(client)
                             boradcastPlayerLeave([*queue, *lobby], client)
