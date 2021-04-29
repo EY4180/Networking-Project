@@ -254,14 +254,28 @@ def random_move(currentPlayer: Player, board: tiles.Board):
 
     if board.have_player_position(currentPlayer.idnum):
         # player needs to place a tile
-        print("stub")
+        playerX, playerY, _ = board.get_player_position(currentPlayer.idnum)
+        rotation = random.randrange(0, 4)
+        tileid = currentPlayer.hand[random.randrange(0, len(currentPlayer.hand))]
+        chunk = tiles.MessagePlaceTile(currentPlayer.idnum, tileid, rotation, playerX, playerY)
     else:
         for x, y in validCoordinates:
             _, _, ownerID = board.get_tile(x, y)
             if ownerID == currentPlayer.idnum:
                 # choose a starting location (move 2)
+                avaliablePositions = []
 
-                tiles.MessageMoveToken(currentPlayer.idnum, x, y, 0)
+                if y == tiles.BOARD_HEIGHT - 1:
+                    avaliablePositions.extend([0, 1])
+                if x == tiles.BOARD_WIDTH - 1:
+                    avaliablePositions.extend([2, 3])
+                if y == 0:
+                    avaliablePositions.extend([4, 5])
+                if x == 0:
+                    avaliablePositions.extend([6, 7])
+
+                position = avaliablePositions[random.randrange(0, len(avaliablePositions))]
+                chunk = tiles.MessageMoveToken(currentPlayer.idnum, x, y, position)
                 break
         else:
             # place first tile (move 1)
@@ -289,6 +303,7 @@ def game_thread(queue: list, lobby: list):
     # give all players a random hand
     for player in lobby:
         boradcastCurrentPlayer(lobby + queue, player)
+        player.hand.clear()
         for _ in range(tiles.HAND_SIZE):
             tileid = tiles.get_random_tileid()
             msg = tiles.MessageAddTileToHand(tileid).pack()
@@ -309,7 +324,7 @@ def game_thread(queue: list, lobby: list):
             
         try:
             chunk = None
-            if abs(time.time() - startTime) > 5:
+            if abs(time.time() - startTime) > 10:
                 chunk = random_move(currentPlayer, board)
             else:
                 chunk = currentPlayer.messages.popleft()
