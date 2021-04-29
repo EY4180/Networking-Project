@@ -37,6 +37,7 @@ class Player():
         self.host, self.port = address
         self.idnum = idnum
         self.messages = collections.deque()
+        self.hand = []
 
     def __eq__(self, other):
         return self.idnum == other.idnum
@@ -246,24 +247,36 @@ def get_live_idnums(lobby: list):
 
 def random_move(currentPlayer: Player, board: tiles.Board):
     validCoordinates = []
-    edgeCoordinates = []
+    chunk = None
     for x in range(tiles.BOARD_WIDTH):
         for y in range(tiles.BOARD_HEIGHT):
             validCoordinates.append((x, y))
 
-    for x, y in validCoordinates:
-        edgeX = x in [0, tiles.BOARD_WIDTH - 1] and y in range(tiles.BOARD_HEIGHT)
-        edgeY = y in [0, tiles.BOARD_HEIGHT - 1] and x in range(tiles.BOARD_WIDTH)
+    if board.have_player_position(currentPlayer.idnum):
+        # player needs to place a tile
+        print("stub")
+    else:
+        for x, y in validCoordinates:
+            _, _, ownerID = board.get_tile(x, y)
+            if ownerID == currentPlayer.idnum:
+                # choose a starting location (move 2)
+                break
+        else:
+            # place first tile (move 1)
+            edgeCoordinates = []
+            for x, y in validCoordinates:
+                edgeX = x in [0, tiles.BOARD_WIDTH - 1] 
+                edgeY = y in [0, tiles.BOARD_HEIGHT - 1] 
 
-        tile, _, _ = board.get_tile(x, y)
-        if (edgeX or edgeY) and not tile:
-            edgeCoordinates.append((x, y))
- 
-    x, y = edgeCoordinates[random.randrange(0, len(edgeCoordinates))]
-    tileid = 2
-    rotation = random.randrange(0, 4)
+                tile, _, _ = board.get_tile(x, y)
+                if (edgeX or edgeY) and not tile:
+                    edgeCoordinates.append((x, y))
+         
+            x, y = edgeCoordinates[random.randrange(0, len(edgeCoordinates))]
+            tileid = currentPlayer.hand[random.randrange(0, len(currentPlayer.hand))]
+            rotation = random.randrange(0, 4)
 
-    chunk = tiles.MessagePlaceTile(currentPlayer.idnum, tileid, rotation, x, y)
+            chunk = tiles.MessagePlaceTile(currentPlayer.idnum, tileid, rotation, x, y)
     return chunk.pack()
             
 def game_thread(queue: list, lobby: list):
@@ -278,6 +291,7 @@ def game_thread(queue: list, lobby: list):
             tileid = tiles.get_random_tileid()
             msg = tiles.MessageAddTileToHand(tileid).pack()
             player.connection.send(msg)
+            player.hand.append(tileid)
 
     # start main game loop
     board = tiles.Board()
@@ -287,6 +301,7 @@ def game_thread(queue: list, lobby: list):
         # start next turn
         if currentPlayer is not lobby[0]:
             currentPlayer = lobby[0]
+            currentPlayer.messages.clear()
             boradcastCurrentPlayer(queue + lobby, currentPlayer)
             startTime = time.time()
             
@@ -296,7 +311,6 @@ def game_thread(queue: list, lobby: list):
                 chunk = random_move(currentPlayer, board)
             else:
                 chunk = currentPlayer.messages.popleft()
-                currentPlayer.messages.clear()
                                          
             # this exception is not expected to happen with my design
             if not chunk:
@@ -326,6 +340,9 @@ def game_thread(queue: list, lobby: list):
                     tileid = tiles.get_random_tileid()
                     tilemsg = tiles.MessageAddTileToHand(tileid).pack()
                     currentPlayer.connection.send(tilemsg)
+                    
+                    currentPlayer.hand.append(tileid)
+                    currentPlayer.hand.remove(msg.tileid)
 
             elif selectingToken:
                 if not board.have_player_position(msg.idnum):
