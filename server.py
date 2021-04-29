@@ -317,7 +317,7 @@ def game_thread(queue: list, lobby: list):
             else:
                 chunk = currentPlayer.messages.popleft()
                                          
-            # this exception is not expected to happen with my design
+            # this exception is not expected to happen
             if not chunk:
                 raise Exception("Client Disconnected")
 
