@@ -26,10 +26,8 @@ import collections
 from os import system, name
 
 PLAYERS_PER_GAME = 4
-tileHistory = []
-tokenHistory = []
 originalOrder = []
-eliminatedPlayers = []
+updateStack = []
 
 class Player():
     def __init__(self, connection, address, idnum):
@@ -53,9 +51,10 @@ def boradcastCurrentPlayer(clients, currentPlayer):
 
 
 def boradcastPlayerEliminated(clients, player):
-    global eliminatedPlayers
+    global updateStack
     msg = tiles.MessagePlayerEliminated(player.idnum).pack()
-    eliminatedPlayers.append(msg)
+    updateStack.append(msg)
+
     for client in clients:
         client.connection.send(msg)
 
@@ -72,14 +71,17 @@ def boradcastGameStart(clients):
         client.connection.send(msg)
 
 
-def boradcastPositionUpdates(clients, updates):    
-    for client in clients:
-        for update in updates:
+def boradcastPositionUpdates(clients, updates):
+    global updateStack
+    for update in updates:
+        updateStack.append(update.pack())
+        for client in clients:
             client.connection.send(update.pack())
 
 def broadcastPlaceSuccessful(clients, msg):
-    global tileHistory
-    tileHistory.append(msg)
+    global updateStack
+    updateStack.append(msg.pack())
+
     for client in clients:
         client.connection.send(msg.pack())
 
@@ -88,12 +90,9 @@ def boradcastCountdown(clients):
         client.connection.send(tiles.MessageCountdown().pack())
 
 def broadcastUpdates(lobby, queue, board, current):
-    global tokenHistory
     live_idnums = get_live_idnums(lobby)
     positionupdates, eliminated = board.do_player_movement(
     live_idnums)
-
-    tokenHistory.extend(positionupdates)
 
     boradcastPositionUpdates(queue + lobby, positionupdates)
 
@@ -162,10 +161,8 @@ def update_status(queue: list, lobby: list):
 
 
 def update_queue(queue, lobby, sock):
-    global tileHistory
-    global tokenHistory
     global originalOrder
-    global eliminatedPlayers
+    global updateStack
     # constantly check for new clients
     while True:
         # handle new connection
@@ -204,25 +201,15 @@ def update_queue(queue, lobby, sock):
             boradcastCurrentPlayer([newPlayer], lobby[0])
 
             # notify of all board updates
-            for msg in tileHistory:
-                newPlayer.connection.send(msg.pack())
-
-            for msg in tokenHistory:
-                newPlayer.connection.send(msg.pack())
-
-            for msg in eliminatedPlayers:
+            for msg in updateStack:
                 newPlayer.connection.send(msg)
 
-
 def lobby_thread(queue: list, lobby: list):
-    global tileHistory
-    global tokenHistory
-    global eliminatedPlayers
+    global updateStack
     global originalOrder
-    tileHistory.clear()
-    tokenHistory.clear()
-    eliminatedPlayers.clear()
     originalOrder.clear()
+    updateStack.clear()
+
     while (len(queue) < 2):
         continue
 
@@ -298,7 +285,6 @@ def random_move(currentPlayer: Player, board: tiles.Board):
     return chunk.pack()
             
 def game_thread(queue: list, lobby: list):
-    global tokenHistory
     # notify all players of start
     boradcastGameStart(queue + lobby)        
 
@@ -366,7 +352,6 @@ def game_thread(queue: list, lobby: list):
             elif selectingToken:
                 if not board.have_player_position(msg.idnum):
                     if board.set_player_start_position(msg.idnum, msg.x, msg.y, msg.position):
-                        tokenHistory.append(msg)
                         broadcastUpdates(lobby, queue, board, currentPlayer)
         except:
             continue
@@ -392,8 +377,8 @@ connectionThread = Thread(target=update_queue, args=(playerQueue, playerLobby, s
 connectionThread.start()
 
 # evaluate health of connections
-ststusThread = Thread(target=update_status, args=(playerQueue, playerLobby))
-ststusThread.start()
+statusThread = Thread(target=update_status, args=(playerQueue, playerLobby))
+statusThread.start()
 
 loggingThread = Thread(target=logging, args=(playerQueue, playerLobby))
 loggingThread.start()
