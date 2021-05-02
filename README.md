@@ -41,11 +41,8 @@ the load.
 #### Limitation
 
 The current program, when run on my local macheine was load tested with 500
-clients connecting at the same time. After profiling the activity, there were
-two issues:
-
-- Propagating updates to users consumed lots of resources
-- Sometimes users would be rejeted if lots connected at once
+clients connecting at the same time. After profiling the activity, Propagating
+updates to users consumed the most resources.
 
 #### Solution
 
@@ -69,12 +66,13 @@ another connection increased - leading to dropped users.
 ### Client Joining
 
 Joining clients are handled one at a time. Their connections are recieved, and
-then they are sent all the information reqired to participate.
+then they are sent all the information reqired to participate. Sometimes users
+would also be rejeted if lots connected at once.
 
 #### Limitation
 
 When a burst of clients join, processing the clients in a linear fashion means
-that it takes a long time for a client to be accepted
+that it takes a long time for a client to be accepted.
 
 #### Solution
 
@@ -82,8 +80,8 @@ The client accepting handler would need to be able to listen and accept multiple
 clients at once. This may be difficult as it then becomes necessary to syncronise
 the id numbers that each handler has assigned as to not use duplicates.
 
-This is a more difficult form of vertical scaling, but would reduce the average
-time for a client to join.
+This would reduce the average time for a client to join, as well
+as increase the reliability when multiple clients join.
 
 ### Memory Locks + Barriers
 
@@ -91,7 +89,7 @@ time for a client to join.
 
 My multithreading code does not implement memory locks or barriers. Normally, I
 would protect accesses to global variables inside a thread to prevent race
-conditions. But the program runs fine without them
+conditions. But the program runs fine without them.
 
 #### Solution
 
@@ -104,5 +102,5 @@ of clients - by preventing corruption to server data.
 The current program can service 65536 unique users. This is a hard limit set in
 the program and may need to be revised if more clients are required. Currently,
 my program reuses ID's (e.g. if client with ID=2 leaves, and a new client
-connects, the ID will be 2). Given the hard-coded limit this method is the best
+connects, the ID will be 2). Given the hard-coded limit, this method is the best
 avaliable for scalability.
