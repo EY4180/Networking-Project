@@ -217,7 +217,7 @@ def lobby_thread(queue: list, lobby: list):
 
     lobbySize = min([len(queue), tiles.PLAYER_LIMIT])
 
-    for _ in range(lobbySize):
+    while len(lobby) < lobbySize:
         playerIndex = random.randrange(0, len(queue))
         player = queue.pop(playerIndex)
         lobby.append(player)
