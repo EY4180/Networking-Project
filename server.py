@@ -96,12 +96,18 @@ def broadcastUpdates(lobby, queue, board, current):
 
     boradcastPositionUpdates(queue + lobby, positionupdates)
 
+    #change players turn
     lobby.append(lobby.pop(0))
 
-    if current.idnum in eliminated:
-        boradcastPlayerEliminated(queue + lobby, current)
-        queue.append(current)
-        lobby.remove(current)
+    # get eliminated clients
+    eliminatedClients = [client for client in lobby if client.idnum in eliminated]
+
+    # eliminated player exits game and returns to queue
+    for client in eliminatedClients:
+        boradcastPlayerEliminated(queue + lobby, client)
+        queue.append(client)
+        lobby.remove(client)
+
 
 def logging(queue: list, lobby: list):
     while True:
@@ -236,7 +242,7 @@ def random_move(currentPlayer: Player, board: tiles.Board):
         # player needs to place a tile
         playerX, playerY, _ = board.get_player_position(currentPlayer.idnum)
         rotation = random.randrange(0, 4)
-        tileid = currentPlayer.hand[random.randrange(0, len(currentPlayer.hand))]
+        tileid = random.choice(currentPlayer.hand)
         chunk = tiles.MessagePlaceTile(currentPlayer.idnum, tileid, rotation, playerX, playerY)
     else:
         for x, y in validCoordinates:
@@ -268,11 +274,12 @@ def random_move(currentPlayer: Player, board: tiles.Board):
                 if (edgeX or edgeY) and not tile:
                     edgeCoordinates.append((x, y))
          
-            x, y = edgeCoordinates[random.randrange(0, len(edgeCoordinates))]
-            tileid = currentPlayer.hand[random.randrange(0, len(currentPlayer.hand))]
+            x, y = random.choice(edgeCoordinates)
+            tileid = random.choice(currentPlayer.hand)
             rotation = random.randrange(0, 4)
 
             chunk = tiles.MessagePlaceTile(currentPlayer.idnum, tileid, rotation, x, y)
+
     return chunk.pack()
             
 def game_thread(queue: list, lobby: list):
@@ -303,7 +310,7 @@ def game_thread(queue: list, lobby: list):
             
         try:
             chunk = None
-            if abs(time.time() - startTime) > 10:
+            if abs(time.time() - startTime) > 1:
                 chunk = random_move(currentPlayer, board)
             else:
                 chunk = currentPlayer.messages.popleft()
