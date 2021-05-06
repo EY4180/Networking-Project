@@ -25,9 +25,9 @@ import select
 import collections
 from os import system, name
 
-PLAYERS_PER_GAME = 4
 originalOrder = []
 updateStack = []
+
 
 class Player():
     def __init__(self, connection, address, idnum):
@@ -78,6 +78,7 @@ def boradcastPositionUpdates(clients, updates):
         for client in clients:
             client.connection.send(update.pack())
 
+
 def broadcastPlaceSuccessful(clients, msg):
     global updateStack
     updateStack.append(msg.pack())
@@ -85,22 +86,24 @@ def broadcastPlaceSuccessful(clients, msg):
     for client in clients:
         client.connection.send(msg.pack())
 
+
 def boradcastCountdown(clients):
     for client in clients:
         client.connection.send(tiles.MessageCountdown().pack())
 
+
 def broadcastUpdates(lobby, queue, board, current):
     live_idnums = [client.idnum for client in lobby]
-    positionupdates, eliminated = board.do_player_movement(
-    live_idnums)
+    positionupdates, eliminated = board.do_player_movement(live_idnums)
 
     boradcastPositionUpdates(queue + lobby, positionupdates)
 
-    #change players turn
+    # change players turn
     lobby.append(lobby.pop(0))
 
     # get eliminated clients
-    eliminatedClients = [client for client in lobby if client.idnum in eliminated]
+    eliminatedClients = [
+        client for client in lobby if client.idnum in eliminated]
 
     # eliminated player exits game and returns to queue
     for client in eliminatedClients:
@@ -209,6 +212,7 @@ def update_queue(queue, lobby, sock):
             for msg in updateStack:
                 newPlayer.connection.send(msg)
 
+
 def lobby_thread(queue: list, lobby: list):
     global updateStack
     global originalOrder
@@ -227,9 +231,10 @@ def lobby_thread(queue: list, lobby: list):
         playerIndex = random.randrange(0, len(queue))
         player = queue.pop(playerIndex)
         lobby.append(player)
-    
+
     originalOrder.extend(lobby)
     return
+
 
 def random_move(currentPlayer: Player, board: tiles.Board):
     validCoordinates = []
@@ -243,7 +248,8 @@ def random_move(currentPlayer: Player, board: tiles.Board):
         playerX, playerY, _ = board.get_player_position(currentPlayer.idnum)
         rotation = random.randrange(0, 4)
         tileid = random.choice(currentPlayer.hand)
-        chunk = tiles.MessagePlaceTile(currentPlayer.idnum, tileid, rotation, playerX, playerY)
+        chunk = tiles.MessagePlaceTile(
+            currentPlayer.idnum, tileid, rotation, playerX, playerY)
     else:
         for x, y in validCoordinates:
             _, _, ownerID = board.get_tile(x, y)
@@ -260,31 +266,35 @@ def random_move(currentPlayer: Player, board: tiles.Board):
                 if x == 0:
                     avaliablePositions.extend([6, 7])
 
-                position = avaliablePositions[random.randrange(0, len(avaliablePositions))]
-                chunk = tiles.MessageMoveToken(currentPlayer.idnum, x, y, position)
+                position = avaliablePositions[random.randrange(
+                    0, len(avaliablePositions))]
+                chunk = tiles.MessageMoveToken(
+                    currentPlayer.idnum, x, y, position)
                 break
         else:
             # place first tile (move 1)
             edgeCoordinates = []
             for x, y in validCoordinates:
-                edgeX = x in [0, tiles.BOARD_WIDTH - 1] 
-                edgeY = y in [0, tiles.BOARD_HEIGHT - 1] 
+                edgeX = x in [0, tiles.BOARD_WIDTH - 1]
+                edgeY = y in [0, tiles.BOARD_HEIGHT - 1]
 
                 tile, _, _ = board.get_tile(x, y)
                 if (edgeX or edgeY) and not tile:
                     edgeCoordinates.append((x, y))
-         
+
             x, y = random.choice(edgeCoordinates)
             tileid = random.choice(currentPlayer.hand)
             rotation = random.randrange(0, 4)
 
-            chunk = tiles.MessagePlaceTile(currentPlayer.idnum, tileid, rotation, x, y)
+            chunk = tiles.MessagePlaceTile(
+                currentPlayer.idnum, tileid, rotation, x, y)
 
     return chunk.pack()
-            
+
+
 def game_thread(queue: list, lobby: list):
     # notify all players of start
-    boradcastGameStart(queue + lobby)        
+    boradcastGameStart(queue + lobby)
 
     # give all players a random hand
     for player in lobby:
@@ -307,14 +317,14 @@ def game_thread(queue: list, lobby: list):
             currentPlayer.messages.clear()
             boradcastCurrentPlayer(queue + lobby, currentPlayer)
             startTime = time.time()
-            
+
         try:
             chunk = None
-            if abs(time.time() - startTime) > 1:
+            if abs(time.time() - startTime) > 0.1:
                 chunk = random_move(currentPlayer, board)
             else:
                 chunk = currentPlayer.messages.popleft()
-                                         
+
             # this exception is not expected to happen
             if not chunk:
                 raise Exception("Client Disconnected")
@@ -322,17 +332,17 @@ def game_thread(queue: list, lobby: list):
             buffer = bytearray()
             buffer.extend(chunk)
             msg, consumed = tiles.read_message_from_bytearray(buffer)
-            
-            # no idea how this exception could happen but included because 
+
+            # no idea how this exception could happen but included because
             # original code had it
             if not consumed:
                 raise Exception("Unable To Read Message")
 
             buffer = buffer[consumed:]
-            
+
             placingTile = isinstance(msg, tiles.MessagePlaceTile)
             selectingToken = isinstance(msg, tiles.MessageMoveToken)
-            
+
             if placingTile:
                 if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
                     # notify client that placement was successful
@@ -343,7 +353,7 @@ def game_thread(queue: list, lobby: list):
                     tileid = tiles.get_random_tileid()
                     tilemsg = tiles.MessageAddTileToHand(tileid).pack()
                     currentPlayer.connection.send(tilemsg)
-                    
+
                     currentPlayer.hand.append(tileid)
                     currentPlayer.hand.remove(msg.tileid)
 
@@ -371,7 +381,8 @@ playerQueue = []
 playerLobby = []
 
 # constantly handle incomming connections
-connectionThread = Thread(target=update_queue, args=(playerQueue, playerLobby, sock))
+connectionThread = Thread(
+    target=update_queue, args=(playerQueue, playerLobby, sock))
 connectionThread.start()
 
 # evaluate health of connections
