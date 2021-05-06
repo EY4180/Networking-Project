@@ -90,7 +90,7 @@ def boradcastCountdown(clients):
         client.connection.send(tiles.MessageCountdown().pack())
 
 def broadcastUpdates(lobby, queue, board, current):
-    live_idnums = get_live_idnums(lobby)
+    live_idnums = [client.idnum for client in lobby]
     positionupdates, eliminated = board.do_player_movement(
     live_idnums)
 
@@ -224,14 +224,6 @@ def lobby_thread(queue: list, lobby: list):
     
     originalOrder.extend(lobby)
     return
-
-
-def get_live_idnums(lobby: list):
-    live_idnums = []
-    for client in lobby:
-        live_idnums.append(client.idnum)
-
-    return live_idnums
 
 def random_move(currentPlayer: Player, board: tiles.Board):
     validCoordinates = []
