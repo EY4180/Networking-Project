@@ -174,7 +174,7 @@ def update_queue(queue, lobby, sock):
             unusedID.remove(client.idnum)
 
         # add player to queue
-        idnum = unusedID[0]
+        idnum = random.choice(unusedID)
         newPlayer = Player(connection, client_address, idnum)
 
         # send messages
