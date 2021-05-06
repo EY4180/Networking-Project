@@ -83,20 +83,6 @@ the id numbers that each handler has assigned as to not use duplicates.
 This would reduce the average time for a client to join, as well
 as increase the reliability when multiple clients join.
 
-### Memory Locks + Barriers
-
-#### Limitation
-
-My multithreading code does not implement memory locks or barriers. Normally, I
-would protect accesses to global variables inside a thread to prevent race
-conditions. But the program runs fine without them.
-
-#### Solution
-
-If this were to be more reliable, memory locks need to be implemented on global
-varibales. This would ensure a error-free experience when adding large amounts
-of clients - by preventing corruption to server data.
-
 ### 65536 User Limit
 
 The current program can service 65536 unique users. This is a hard limit set in
@@ -104,3 +90,16 @@ the program and may need to be revised if more clients are required. Currently,
 my program reuses ID's (e.g. if client with ID=2 leaves, and a new client
 connects, the ID will be 2). Given the hard-coded limit, this method is the best
 avaliable for scalability.
+
+## Additional Notes
+Because my project was completed very early, my implementation may be a little
+bit different from what was outlined in the lecture released a week before the
+project was due. So it was a little too late to change my implementaion.
+
+For example, I do not use thread pools or queues. And instead use a simple list
+structure containing instances of players - with a couple of threads running in
+parallel.
+
+Some of the issues like data races are not present in my program. This is because
+the only operations im performing on the shared data is atomic. And python does
+a pretty good job of making these operations thread-safe.
