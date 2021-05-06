@@ -169,12 +169,11 @@ def update_queue(queue, lobby, sock):
         connection, client_address = sock.accept()
 
         # find avaliable id numbers
-        unusedID = list(range(tiles.IDNUM_LIMIT))
-        for client in lobby + queue:
-            unusedID.remove(client.idnum)
+        usedID = {client.idnum for client in lobby + queue}
+        unusedID = set(range(tiles.IDNUM_LIMIT)) - usedID
 
         # add player to queue
-        idnum = random.choice(unusedID)
+        idnum = unusedID.pop()
         newPlayer = Player(connection, client_address, idnum)
 
         # send messages
