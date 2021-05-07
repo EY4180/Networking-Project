@@ -266,8 +266,7 @@ def random_move(currentPlayer: Player, board: tiles.Board):
                 if x == 0:
                     avaliablePositions.extend([6, 7])
 
-                position = avaliablePositions[random.randrange(
-                    0, len(avaliablePositions))]
+                position = random.choice(avaliablePositions)
                 chunk = tiles.MessageMoveToken(
                     currentPlayer.idnum, x, y, position)
                 break
