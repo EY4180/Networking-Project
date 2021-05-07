@@ -205,13 +205,12 @@ def update_queue(queue, lobby, sock):
             for client in originalOrder:
                 boradcastCurrentPlayer([newPlayer], client)
 
-            # notify of all board updates
-            for msg in updateStack:
-                newPlayer.connection.send(msg)
-
             # notify of current player
             boradcastCurrentPlayer([newPlayer], lobby[0])
 
+            # notify of all board updates
+            for msg in updateStack:
+                newPlayer.connection.send(msg)
 
 
 def lobby_thread(queue: list, lobby: list):
