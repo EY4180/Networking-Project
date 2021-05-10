@@ -309,7 +309,7 @@ def game_thread(queue: list, lobby: list):
     board = tiles.Board()
     currentPlayer = None
     startTime = None
-    while len(lobby) != 1:
+    while len(lobby) > 1:
         # start next turn
         if currentPlayer is not lobby[0]:
             currentPlayer = lobby[0]
@@ -388,8 +388,8 @@ connectionThread.start()
 statusThread = Thread(target=update_status, args=(playerQueue, playerLobby))
 statusThread.start()
 
-loggingThread = Thread(target=logging, args=(playerQueue, playerLobby))
-loggingThread.start()
+#loggingThread = Thread(target=logging, args=(playerQueue, playerLobby))
+# loggingThread.start()
 
 while True:
     # wait for players to fill the lobby
