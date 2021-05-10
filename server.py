@@ -24,7 +24,6 @@ import time
 import select
 from os import system, name
 
-updateStack = []
 
 class Player():
     def __init__(self, connection, address, idnum):
@@ -46,6 +45,7 @@ def boradcastCurrentPlayer(clients, currentPlayer):
     msg = tiles.MessagePlayerTurn(currentPlayer.idnum).pack()
     updateStack.append(msg)
     for client in clients:
+        client.message = None
         client.connection.send(msg)
 
 
@@ -75,10 +75,11 @@ def boradcastGameStart(clients):
 
 def boradcastPositionUpdates(clients, updates):
     global updateStack
-    for update in [update.pack() for update in updates]:
-        updateStack.append(update)
+
+    for update in updates:
+        updateStack.append(update.pack())
         for client in clients:
-            client.connection.send(update)
+            client.connection.send(update.pack())
 
 
 def broadcastPlaceSuccessful(clients, msg):
@@ -90,10 +91,7 @@ def broadcastPlaceSuccessful(clients, msg):
 
 
 def boradcastCountdown(clients):
-    global updateStack
     msg = tiles.MessageCountdown().pack()
-
-    updateStack.append(msg)
     for client in clients:
         client.connection.send(msg)
 
@@ -108,120 +106,76 @@ def broadcastUpdates(lobby, queue, board, current):
     eliminatedClients = [
         client for client in lobby if client.idnum in eliminated]
 
+    # change players turn
+    lobby.append(lobby.pop(0))
+
     # eliminated player exits game and returns to queue
     for client in eliminatedClients:
         boradcastPlayerEliminated(lobby + queue, client)
         queue.append(client)
         lobby.remove(client)
 
-    # change players turn
-    lobby.append(lobby.pop(0))
 
-
-def logging(queue: list, lobby: list):
+def update_status(queue: list, lobby: list, server, updateStack: list):
     while True:
-        # for windows
-        if name == 'nt':
-            _ = system('cls')
-
-        # for mac and linux(here, os.name is 'posix')
-        else:
-            _ = system('clear')
-
-        print("Connected Users [{}]".format(len(lobby + queue)))
-        for client in [*lobby, *queue]:
-            print("\t" + client.getName())
-
-        print("Lobby [{}/{}]".format(len(lobby), tiles.PLAYER_LIMIT))
-        for client in lobby:
-            print("\t" + client.getName())
-
-        print("Queue [{}]".format(len(queue)))
-        for client in queue:
-            print("\t" + client.getName())
-
-        time.sleep(1)
-
-
-def update_status(queue: list, lobby: list):
-    while True:
-        activeSockets = []
+        activeSockets = [server]
         for client in lobby + queue:
             activeSockets.append(client.connection)
 
-        try:
-            ready, _, _ = select.select(activeSockets, [], [], 0)
+        ready, _, _ = select.select(activeSockets, [], [])
 
-            for clientConnection in ready:
+        for clientConnection in ready:
+            if clientConnection is server:
+                # handle new connection
+                connection, client_address = server.accept()
+
+                # find avaliable id numbers
+                usedID = {client.idnum for client in lobby + queue}
+                unusedID = set(range(tiles.IDNUM_LIMIT)) - usedID
+
+                # add player to queue
+                idnum = unusedID.pop()
+                newPlayer = Player(connection, client_address, idnum)
+
+                # send messages
+                connection.send(tiles.MessageWelcome(
+                    newPlayer.idnum).pack())
+
+                # make sure all clients know other clients
+                for player in lobby + queue:
+                    player.connection.send(tiles.MessagePlayerJoined(
+                        newPlayer.getName(), newPlayer.idnum).pack())
+
+                    newPlayer.connection.send(tiles.MessagePlayerJoined(
+                        player.getName(), player.idnum).pack())
+
+                # send cumilative updates to joining client
+                for msg in updateStack:
+                    newPlayer.connection.send(msg)
+
+                queue.append(newPlayer)
+            else:
                 message = clientConnection.recv(4096)
 
                 for client in lobby:
-                    if client.connection == clientConnection:
+                    if client.connection is clientConnection:
                         client.message = message
+                        # player in game disconnected
                         if not message:
                             lobby.remove(client)
-                            boradcastPlayerEliminated(lobby + queue, client)
+                            boradcastPlayerEliminated(
+                                lobby + queue, client)
                             boradcastPlayerLeave(lobby + queue, client)
                         break
 
                 for client in queue:
-                    if client.connection == clientConnection:
+                    if client.connection is clientConnection:
                         client.message = message
+                        # player in queue disconnected
                         if not message:
                             queue.remove(client)
                             boradcastPlayerLeave(lobby + queue, client)
                         break
-        except:
-            continue
-
-
-def update_queue(queue, lobby, sock):
-    global updateStack
-    # constantly check for new clients
-    while True:
-        # handle new connection
-        connection, client_address = sock.accept()
-
-        # find avaliable id numbers
-        usedID = {client.idnum for client in lobby + queue}
-        unusedID = set(range(tiles.IDNUM_LIMIT)) - usedID
-
-        # add player to queue
-        idnum = unusedID.pop()
-        newPlayer = Player(connection, client_address, idnum)
-
-        # send messages
-        connection.send(tiles.MessageWelcome(newPlayer.idnum).pack())
-
-        # make sure all clients know other clients
-        for player in lobby + queue:
-            player.connection.send(tiles.MessagePlayerJoined(
-                newPlayer.getName(), newPlayer.idnum).pack())
-
-            newPlayer.connection.send(tiles.MessagePlayerJoined(
-                player.getName(), player.idnum).pack())
-
-        # send cumilative updates to joining client
-        for msg in updateStack:
-            newPlayer.connection.send(msg)
-
-        queue.append(newPlayer)
-
-
-def lobby_thread(queue: list, lobby: list):    
-    while (len(queue) < 2):
-        continue
-    
-    boradcastCountdown(queue)
-    lobbySize = min([len(queue), tiles.PLAYER_LIMIT])
-
-    while len(lobby) < lobbySize:
-        playerIndex = random.randrange(0, len(queue))
-        player = queue.pop(playerIndex)
-        lobby.append(player)
-
-    return
-
 
 def random_move(currentPlayer: Player, board: tiles.Board):
     validCoordinates = []
@@ -278,117 +232,111 @@ def random_move(currentPlayer: Player, board: tiles.Board):
     return chunk.pack()
 
 
-def game_thread(queue: list, lobby: list):
-    # notify all players of start
-    boradcastGameStart(lobby + queue)
+def game_thread(queue: list, lobby: list, updateStack: list):
+    while True:
+        # move players in lobby to queue and clear lobby
+        queue.extend(playerLobby)
+        lobby.clear()
+        updateStack.clear()
 
-    # give all players a random hand
-    for player in lobby:
-        boradcastCurrentPlayer(lobby + queue, player)
-        player.hand.clear()
-        for _ in range(tiles.HAND_SIZE):
-            tileid = tiles.get_random_tileid()
-            msg = tiles.MessageAddTileToHand(tileid).pack()
-            player.connection.send(msg)
-            player.hand.append(tileid)
-
-    # start main game loop
-    board = tiles.Board()
-    currentPlayer = None
-    startTime = time.time()
-
-    while len(lobby) > 1:
-        # start next turn
-        if currentPlayer is not lobby[0]:
-            currentPlayer = lobby[0]
-            currentPlayer.message = None
-            boradcastCurrentPlayer(lobby + queue, currentPlayer)
-            startTime = time.time()
-
-        try:
-            chunk = None
-            if abs(time.time() - startTime) > 10:
-                chunk = random_move(currentPlayer, board)
-            else:
-                chunk = currentPlayer.message
-
-            # this exception is not expected to happen
-            if not chunk:
-                raise Exception("Client Disconnected or No Message")
-
-            buffer = bytearray()
-            buffer.extend(chunk)
-            msg, consumed = tiles.read_message_from_bytearray(buffer)
-
-            # no idea how this exception could happen but included because
-            # original code had it
-            if not consumed:
-                raise Exception("Unable To Read Message")
-
-            buffer = buffer[consumed:]
-
-            placingTile = isinstance(msg, tiles.MessagePlaceTile)
-            selectingToken = isinstance(msg, tiles.MessageMoveToken)
-
-            if placingTile:
-                if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
-                    # notify client that placement was successful
-                    broadcastPlaceSuccessful(lobby + queue, msg.pack())
-
-                    # pickup a new tile
-                    tileid = tiles.get_random_tileid()
-                    tilemsg = tiles.MessageAddTileToHand(tileid).pack()
-                    currentPlayer.connection.send(tilemsg)
-
-                    currentPlayer.hand.append(tileid)
-                    currentPlayer.hand.remove(msg.tileid)
-
-                    broadcastUpdates(lobby, queue, board, currentPlayer)
-
-            elif selectingToken:
-                if not board.have_player_position(msg.idnum):
-                    if board.set_player_start_position(msg.idnum, msg.x, msg.y, msg.position):
-                        broadcastUpdates(lobby, queue, board, currentPlayer)
-        except:
+        while (len(queue) < 2):
             continue
-    return
+
+        boradcastCountdown(lobby + queue)
+        lobbySize = min([len(queue), tiles.PLAYER_LIMIT])
+
+        while len(lobby) < lobbySize:
+            player = random.choice(queue)
+            queue.remove(player)
+            lobby.append(player)
+
+        # notify all players of start
+        boradcastGameStart(lobby + queue)
+
+        # give all players a random hand
+        for player in lobby:
+            boradcastCurrentPlayer(lobby + queue, player)
+            player.hand.clear()
+            for _ in range(tiles.HAND_SIZE):
+                tileid = tiles.get_random_tileid()
+                msg = tiles.MessageAddTileToHand(tileid).pack()
+                player.connection.send(msg)
+                player.hand.append(tileid)
+
+        # start main game loop
+        board = tiles.Board()
+        currentPlayer = None
+        startTime = time.time()
+
+        while len(lobby) > 1:
+            # start next turn
+            if currentPlayer is not lobby[0]:
+                currentPlayer = lobby[0]
+                boradcastCurrentPlayer(lobby + queue, currentPlayer)
+                startTime = time.time()
+
+            chunk = currentPlayer.message
+            # replace player message with random move if overtime
+            if time.time() - startTime > 10:
+                chunk = random_move(currentPlayer, board)
+
+            # check if this message is populated
+            if chunk:
+                buffer = bytearray()
+                buffer.extend(chunk)
+                msg, consumed = tiles.read_message_from_bytearray(buffer)
+
+                # no idea how this exception could happen but included because
+                # original code had it
+                if consumed:
+                    buffer = buffer[consumed:]
+
+                    placingTile = isinstance(msg, tiles.MessagePlaceTile)
+                    selectingToken = isinstance(msg, tiles.MessageMoveToken)
+
+                    if placingTile:
+                        if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
+                            # notify client that placement was successful
+                            broadcastPlaceSuccessful(lobby + queue, msg.pack())
+
+                            # pickup a new tile
+                            tileid = tiles.get_random_tileid()
+                            tilemsg = tiles.MessageAddTileToHand(tileid).pack()
+                            currentPlayer.connection.send(tilemsg)
+
+                            currentPlayer.hand.append(tileid)
+                            currentPlayer.hand.remove(msg.tileid)
+
+                            broadcastUpdates(
+                                lobby, queue, board, currentPlayer)
+
+                    elif selectingToken:
+                        if not board.have_player_position(msg.idnum):
+                            if board.set_player_start_position(msg.idnum, msg.x, msg.y, msg.position):
+                                broadcastUpdates(
+                                    lobby, queue, board, currentPlayer)
 
 
 # create a TCP/IP socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # listen on all network interfaces
 server_address = ('', 30020)
-sock.bind(server_address)
+server.bind(server_address)
 
-sock.listen(5)
+server.listen(5)
 
+updateStack = []
 playerQueue = []
 playerLobby = []
 
 # constantly handle incomming connections
-connectionThread = Thread(
-    target=update_queue, args=(playerQueue, playerLobby, sock))
-connectionThread.start()
-
-# evaluate health of connections
-statusThread = Thread(target=update_status, args=(playerQueue, playerLobby))
+statusThread = Thread(target=update_status, args=(
+    playerQueue, playerLobby, server, updateStack))
 statusThread.start()
-
-#loggingThread = Thread(target=logging, args=(playerQueue, playerLobby))
-# loggingThread.start()
+# start game
+gameThread = Thread(target=game_thread, args=(
+    playerQueue, playerLobby, updateStack))
+gameThread.start()
 while True:
-    # wait for players to fill the lobby
-    lobbyFormationThread = Thread(
-        target=lobby_thread, args=(playerQueue, playerLobby))
-    lobbyFormationThread.start()
-    lobbyFormationThread.join()
-
-    # start game
-    gameThread = Thread(target=game_thread, args=(playerQueue, playerLobby))
-    gameThread.start()
-    gameThread.join()
-
-    updateStack.clear()
-    playerQueue.extend(playerLobby)
-    playerLobby.clear()
+    continue

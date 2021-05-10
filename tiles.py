@@ -55,13 +55,8 @@ class MessageWelcome():
     
     return None, 0
   
-  def __eq__(self, other):
-    if isinstance(other, MessageWelcome):
-      return self.idnum == other.idnum
-    return False
-  
   def __str__(self):
-    return f"MessageWelcome {self.idnum}"
+    return f"Welcome to the game! your ID is {self.idnum}."  
 
 class MessagePlayerJoined():
   """Sent by the server to all clients, when a new client joins.
@@ -89,13 +84,8 @@ class MessagePlayerJoined():
     
     return None, 0
   
-  def __eq__(self, other):
-    if isinstance(other, MessagePlayerJoined):
-      return self.name == other.name and self.idnum == other.idnum
-    return False
-  
   def __str__(self):
-    return f"MessagePlayerJoined {self.idnum} {self.name}"
+    return f"Player {self.name} has joined the game!"  
 
 class MessagePlayerLeft():
   """Sent by the server to all remaining clients, when a client leaves."""
@@ -116,13 +106,8 @@ class MessagePlayerLeft():
     
     return None, 0
   
-  def __eq__(self, other):
-    if isinstance(other, MessagePlayerLeft):
-      return self.idnum == other.idnum
-    return False
-  
   def __str__(self):
-    return f"MessagePlayerLeft {self.idnum}"
+    return f"A player has left the game."  
 
 class MessageCountdown():
   """Sent by the server to all clients, when the countdown for a new game has
@@ -131,14 +116,6 @@ class MessageCountdown():
 
   def pack(self):
     return struct.pack('!H', MessageType.COUNTDOWN_STARTED)
-  
-  def __eq__(self, other):
-    if isinstance(other, MessageCountdown):
-      return True
-    return False
-  
-  def __str__(self):
-    return "MessageCountdown"
 
 
 class MessageGameStart():
@@ -146,14 +123,6 @@ class MessageGameStart():
 
   def pack(self):
     return struct.pack('!H', MessageType.GAME_START)
-  
-  def __eq__(self, other):
-    if isinstance(other, MessageGameStart):
-      return True
-    return False
-  
-  def __str__(self):
-    return "MessageGameStart"
 
 
 class MessageAddTileToHand():
@@ -177,13 +146,8 @@ class MessageAddTileToHand():
     
     return None, 0
   
-  def __eq__(self, other):
-    if isinstance(other, MessageAddTileToHand):
-      return self.tileid == other.tileid
-    return False
-  
   def __str__(self):
-    return f"MessageAddTileToHand {self.tileid}"
+    return "Tiles are now added to your hand!"
 
 class MessagePlayerTurn():
   """Sent by the server to all clients to indicate that a new turn has
@@ -206,13 +170,8 @@ class MessagePlayerTurn():
     
     return None, 0
   
-  def __eq__(self, other):
-    if isinstance(other, MessagePlayerTurn):
-      return self.idnum == other.idnum
-    return False
-  
   def __str__(self):
-    return f"MessagePlayerTurn {self.idnum}"
+    return "A new turn has started!"  
 
 class MessagePlaceTile():
   """Sent by the current player to the server to indicate that they want to
@@ -243,13 +202,8 @@ class MessagePlaceTile():
     
     return None, 0
   
-  def __eq__(self, other):
-    if isinstance(other, MessagePlaceTile):
-      return self.idnum == other.idnum and self.tileid == other.tileid and self.rotation == other.rotation and self.x == other.x and self.y == other.y
-    return False
-  
   def __str__(self):
-    return f"MessagePlaceTile {self.idnum} {self.tileid} {self.x} {self.y} {self.rotation}"
+    return "A player placed his/her tile!"  
 
 class MessageMoveToken():
   """Sent by the current player to the server on turn 2, to indicate which
@@ -280,13 +234,8 @@ class MessageMoveToken():
     
     return None, 0
   
-  def __eq__(self, other):
-    if isinstance(other, MessageMoveToken):
-      return self.idnum == other.idnum and self.x == other.x and self.y == other.y and self.position == other.position
-    return False
-  
   def __str__(self):
-    return f"MessageMoveToken {self.idnum} {self.x} {self.y} {self.position}"
+    return "Player has decided its starting position!"  
 
 class MessagePlayerEliminated():
   """Sent by the server to all clients when a player is eliminated from the
@@ -309,14 +258,9 @@ class MessagePlayerEliminated():
       return cls(idnum), messagelen
     
     return None, 0
-
-  def __eq__(self, other):
-    if isinstance(other, MessagePlayerEliminated):
-      return self.idnum == other.idnum
-    return False
   
   def __str__(self):
-    return f"MessagePlayerEliminated {self.idnum}"  
+    return "A player has been eliminated!"  
 
 
 def read_message_from_bytearray(bs: bytearray):

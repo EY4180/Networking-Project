@@ -371,8 +371,6 @@ def communication_thread(sock):
               with app.infolock:
                 if msg.idnum in app.playernames:
                   del app.playernames[msg.idnum]
-                else:
-                  print("...I didn't know they were a player!")
             
             elif isinstance(msg, tiles.MessageCountdown):
               print('Countdown starting...')
@@ -392,38 +390,18 @@ def communication_thread(sock):
             
             elif isinstance(msg, tiles.MessagePlayerTurn):
               print('Player turn: {}'.format(msg))
-
-              with app.infolock:
-                if msg.idnum not in app.playernames:
-                  raise RuntimeError('Unknown playerid {}'.format(msg.idnum))
-              
               set_player_turn(msg.idnum)
             
             elif isinstance(msg, tiles.MessagePlaceTile):
               print('Place tile: {}'.format(msg))
-
-              with app.infolock:
-                if msg.idnum not in app.playernames:
-                  raise RuntimeError('Unknown playerid {}'.format(msg.idnum))
-              
               tile_placed(msg)
             
             elif isinstance(msg, tiles.MessageMoveToken):
               print('Move token: {}'.format(msg))
-
-              with app.infolock:
-                if msg.idnum not in app.playernames:
-                  raise RuntimeError('Unknown playerid {}'.format(msg.idnum))
-              
               token_moved(msg)
             
             elif isinstance(msg, tiles.MessagePlayerEliminated):
               print('Player eliminated: {}'.format(msg))
-
-              with app.infolock:
-                if msg.idnum not in app.playernames:
-                  raise RuntimeError('Unknown playerid {}'.format(msg.idnum))
-              
               set_player_eliminated(msg.idnum)
             
             else:
@@ -432,8 +410,7 @@ def communication_thread(sock):
             break
       else:
         break
-    except Exception as e:
-      print('Error: {}'.format(e))
+    except:
       break
   
   print('Server closed connection')
