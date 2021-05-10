@@ -319,7 +319,7 @@ def game_thread(queue: list, lobby: list):
 
         try:
             chunk = None
-            if abs(time.time() - startTime) > 0.1:
+            if abs(time.time() - startTime) > 10:
                 chunk = random_move(currentPlayer, board)
             else:
                 chunk = currentPlayer.messages.popleft()
