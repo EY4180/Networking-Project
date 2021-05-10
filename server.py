@@ -22,7 +22,6 @@ from threading import Thread
 import random
 import time
 import select
-import collections
 from os import system, name
 
 updateStack = []
@@ -32,7 +31,7 @@ class Player():
         self.connection = connection
         self.host, self.port = address
         self.idnum = idnum
-        self.messages = collections.deque()
+        self.message = None
         self.hand = []
 
     def __eq__(self, other):
@@ -76,18 +75,18 @@ def boradcastGameStart(clients):
 
 def boradcastPositionUpdates(clients, updates):
     global updateStack
-    for update in updates:
-        updateStack.append(update.pack())
+    for update in [update.pack() for update in updates]:
+        updateStack.append(update)
         for client in clients:
-            client.connection.send(update.pack())
+            client.connection.send(update)
 
 
 def broadcastPlaceSuccessful(clients, msg):
     global updateStack
-    updateStack.append(msg.pack())
+    updateStack.append(msg)
 
     for client in clients:
-        client.connection.send(msg.pack())
+        client.connection.send(msg)
 
 
 def boradcastCountdown(clients):
@@ -158,7 +157,7 @@ def update_status(queue: list, lobby: list):
 
                 for client in lobby:
                     if client.connection == clientConnection:
-                        client.messages.appendleft(message)
+                        client.message = message
                         if not message:
                             lobby.remove(client)
                             boradcastPlayerEliminated(lobby + queue, client)
@@ -167,7 +166,7 @@ def update_status(queue: list, lobby: list):
 
                 for client in queue:
                     if client.connection == clientConnection:
-                        client.messages.appendleft(message)
+                        client.message = message
                         if not message:
                             queue.remove(client)
                             boradcastPlayerLeave(lobby + queue, client)
@@ -302,7 +301,7 @@ def game_thread(queue: list, lobby: list):
         # start next turn
         if currentPlayer is not lobby[0]:
             currentPlayer = lobby[0]
-            currentPlayer.messages.clear()
+            currentPlayer.message = None
             boradcastCurrentPlayer(lobby + queue, currentPlayer)
             startTime = time.time()
 
@@ -311,11 +310,11 @@ def game_thread(queue: list, lobby: list):
             if abs(time.time() - startTime) > 10:
                 chunk = random_move(currentPlayer, board)
             else:
-                chunk = currentPlayer.messages.popleft()
+                chunk = currentPlayer.message
 
             # this exception is not expected to happen
             if not chunk:
-                raise Exception("Client Disconnected")
+                raise Exception("Client Disconnected or No Message")
 
             buffer = bytearray()
             buffer.extend(chunk)
@@ -334,7 +333,7 @@ def game_thread(queue: list, lobby: list):
             if placingTile:
                 if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
                     # notify client that placement was successful
-                    broadcastPlaceSuccessful(lobby + queue, msg)
+                    broadcastPlaceSuccessful(lobby + queue, msg.pack())
 
                     # pickup a new tile
                     tileid = tiles.get_random_tileid()
