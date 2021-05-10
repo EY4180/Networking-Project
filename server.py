@@ -163,8 +163,7 @@ def update_status(queue: list, lobby: list, server, updateStack: list):
                         # player in game disconnected
                         if not message:
                             lobby.remove(client)
-                            boradcastPlayerEliminated(
-                                lobby + queue, client)
+                            boradcastPlayerEliminated(lobby + queue, client)
                             boradcastPlayerLeave(lobby + queue, client)
                         break
 
@@ -208,8 +207,7 @@ def random_move(currentPlayer: Player, board: tiles.Board):
                     avaliablePositions.extend([1, 0])
 
                 position = random.choice(avaliablePositions)
-                chunk = tiles.MessageMoveToken(
-                    currentPlayer.idnum, x, y, position)
+                chunk = tiles.MessageMoveToken(currentPlayer.idnum, x, y, position)
                 break
         else:
             # place first tile (move 1)
@@ -278,12 +276,13 @@ def game_thread(queue: list, lobby: list, updateStack: list):
             try:
                 chunk = currentPlayer.message
                 # replace player message with random move if overtime
-                if time.time() - startTime > 10:
+                if time.time() - startTime > 0.3:
                     chunk = random_move(currentPlayer, board)
 
                 # check if this message is populated
                 if not chunk:
                     raise Exception("No Message or Disconnect")
+
                 buffer = bytearray()
                 buffer.extend(chunk)
                 msg, consumed = tiles.read_message_from_bytearray(buffer)
@@ -301,8 +300,6 @@ def game_thread(queue: list, lobby: list, updateStack: list):
                 if placingTile:
                     if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
                         index = board.tile_index(msg.x, msg.y)
-                        print(msg.tileid in currentPlayer.hand)
-                        print(msg.idnum is currentPlayer.idnum)
 
                         # notify client that placement was successful
                         broadcastPlaceSuccessful(lobby + queue, msg.pack())
@@ -315,15 +312,12 @@ def game_thread(queue: list, lobby: list, updateStack: list):
                         currentPlayer.hand.append(tileid)
                         currentPlayer.hand.remove(msg.tileid)
 
-                        broadcastUpdates(
-                            lobby, queue, board, currentPlayer)
+                        broadcastUpdates(lobby, queue, board, currentPlayer)
                 elif selectingToken:
                     if not board.have_player_position(msg.idnum):
                         if board.set_player_start_position(msg.idnum, msg.x, msg.y, msg.position):
-                            broadcastUpdates(
-                                lobby, queue, board, currentPlayer)
-            except Exception as e:
-                # print(str(e))
+                            broadcastUpdates(lobby, queue, board, currentPlayer)
+            except:
                 continue
 
 
