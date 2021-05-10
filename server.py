@@ -177,6 +177,7 @@ def update_status(queue: list, lobby: list, server, updateStack: list):
                             boradcastPlayerLeave(lobby + queue, client)
                         break
 
+
 def random_move(currentPlayer: Player, board: tiles.Board):
     validCoordinates = []
     chunk = None
@@ -197,15 +198,14 @@ def random_move(currentPlayer: Player, board: tiles.Board):
             if ownerID == currentPlayer.idnum:
                 # choose a starting location (move 2)
                 avaliablePositions = []
-
-                if y == tiles.BOARD_HEIGHT - 1:
-                    avaliablePositions.extend([0, 1])
-                if x == tiles.BOARD_WIDTH - 1:
-                    avaliablePositions.extend([2, 3])
-                if y == 0:
-                    avaliablePositions.extend([4, 5])
                 if x == 0:
-                    avaliablePositions.extend([6, 7])
+                    avaliablePositions.extend([7, 6])
+                if y == 0:
+                    avaliablePositions.extend([5, 4])
+                if x == board.width - 1:
+                    avaliablePositions.extend([3, 2])
+                if y == board.height - 1:
+                    avaliablePositions.extend([1, 0])
 
                 position = random.choice(avaliablePositions)
                 chunk = tiles.MessageMoveToken(
@@ -218,8 +218,8 @@ def random_move(currentPlayer: Player, board: tiles.Board):
                 edgeX = x in [0, tiles.BOARD_WIDTH - 1]
                 edgeY = y in [0, tiles.BOARD_HEIGHT - 1]
 
-                tile, _, _ = board.get_tile(x, y)
-                if (edgeX or edgeY) and not tile:
+                index = board.tile_index(x, y)
+                if (edgeX or edgeY) and not board.tileids[index]:
                     edgeCoordinates.append((x, y))
 
             x, y = random.choice(edgeCoordinates)
@@ -275,46 +275,56 @@ def game_thread(queue: list, lobby: list, updateStack: list):
                 boradcastCurrentPlayer(lobby + queue, currentPlayer)
                 startTime = time.time()
 
-            chunk = currentPlayer.message
-            # replace player message with random move if overtime
-            if time.time() - startTime > 10:
-                chunk = random_move(currentPlayer, board)
+            try:
+                chunk = currentPlayer.message
+                # replace player message with random move if overtime
+                if time.time() - startTime > 10:
+                    chunk = random_move(currentPlayer, board)
 
-            # check if this message is populated
-            if chunk:
+                # check if this message is populated
+                if not chunk:
+                    raise Exception("No Message or Disconnect")
                 buffer = bytearray()
                 buffer.extend(chunk)
                 msg, consumed = tiles.read_message_from_bytearray(buffer)
 
                 # no idea how this exception could happen but included because
                 # original code had it
-                if consumed:
-                    buffer = buffer[consumed:]
+                if not consumed:
+                    raise Exception("Message Not Read Into Buffer")
 
-                    placingTile = isinstance(msg, tiles.MessagePlaceTile)
-                    selectingToken = isinstance(msg, tiles.MessageMoveToken)
+                buffer = buffer[consumed:]
 
-                    if placingTile:
-                        if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
-                            # notify client that placement was successful
-                            broadcastPlaceSuccessful(lobby + queue, msg.pack())
+                placingTile = isinstance(msg, tiles.MessagePlaceTile)
+                selectingToken = isinstance(msg, tiles.MessageMoveToken)
 
-                            # pickup a new tile
-                            tileid = tiles.get_random_tileid()
-                            tilemsg = tiles.MessageAddTileToHand(tileid).pack()
-                            currentPlayer.connection.send(tilemsg)
+                if placingTile:
+                    if board.set_tile(msg.x, msg.y, msg.tileid, msg.rotation, msg.idnum):
+                        index = board.tile_index(msg.x, msg.y)
+                        print(msg.tileid in currentPlayer.hand)
+                        print(msg.idnum is currentPlayer.idnum)
 
-                            currentPlayer.hand.append(tileid)
-                            currentPlayer.hand.remove(msg.tileid)
+                        # notify client that placement was successful
+                        broadcastPlaceSuccessful(lobby + queue, msg.pack())
 
+                        # pickup a new tile
+                        tileid = tiles.get_random_tileid()
+                        tilemsg = tiles.MessageAddTileToHand(tileid).pack()
+                        currentPlayer.connection.send(tilemsg)
+
+                        currentPlayer.hand.append(tileid)
+                        currentPlayer.hand.remove(msg.tileid)
+
+                        broadcastUpdates(
+                            lobby, queue, board, currentPlayer)
+                elif selectingToken:
+                    if not board.have_player_position(msg.idnum):
+                        if board.set_player_start_position(msg.idnum, msg.x, msg.y, msg.position):
                             broadcastUpdates(
                                 lobby, queue, board, currentPlayer)
-
-                    elif selectingToken:
-                        if not board.have_player_position(msg.idnum):
-                            if board.set_player_start_position(msg.idnum, msg.x, msg.y, msg.position):
-                                broadcastUpdates(
-                                    lobby, queue, board, currentPlayer)
+            except Exception as e:
+                # print(str(e))
+                continue
 
 
 # create a TCP/IP socket
