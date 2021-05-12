@@ -1,20 +1,7 @@
-# CITS3002 2021 Assignment
-#
-# This file implements a basic server that allows a single client to play a
-# single game with no other participants, and very little error checking.
-#
-# Any other clients that connect during this time will need to wait for the
-# first client's game to complete.
-#
-# Your task will be to write a new server that adds all connected clients into
-# a pool of players. When enough players are available (two or more), the server
-# will create a game with a random sample of those players (no more than
-# tiles.PLAYER_LIMIT players will be in any one game). Players will take turns
-# in an order determined by the server, continuing until the game is finished
-# (there are less than two players remaining). When the game is finished, if
-# there are enough players available the server will start a new game with a
-# new selection of clients.
-
+'''
+Edward Yamamoto (22709905)
+Developed in Windows
+'''
 import socket
 import sys
 import tiles
@@ -22,8 +9,8 @@ from threading import Thread
 import random
 import time
 import select
-from os import system, name
 
+TIMEOUT = 10 # maximum before random move occurs (seconds)
 
 class Player():
     def __init__(self, connection, address, idnum):
@@ -155,6 +142,7 @@ def update_status(queue: list, lobby: list, server, updateStack: list):
 
                 queue.append(newPlayer)
             else:
+                # store most recent message from client
                 message = clientConnection.recv(4096)
 
                 for client in lobby:
@@ -165,6 +153,7 @@ def update_status(queue: list, lobby: list, server, updateStack: list):
                             lobby.remove(client)
                             boradcastPlayerEliminated(lobby + queue, client)
                             boradcastPlayerLeave(lobby + queue, client)
+                            client.connection.close()
                         break
 
                 for client in queue:
@@ -174,6 +163,7 @@ def update_status(queue: list, lobby: list, server, updateStack: list):
                         if not message:
                             queue.remove(client)
                             boradcastPlayerLeave(lobby + queue, client)
+                            client.connection.close()
                         break
 
 
@@ -237,6 +227,7 @@ def game_thread(queue: list, lobby: list, updateStack: list):
         lobby.clear()
         updateStack.clear()
 
+        # stall unitl minimum player count reached
         while (len(queue) < 2):
             continue
 
@@ -264,7 +255,7 @@ def game_thread(queue: list, lobby: list, updateStack: list):
         # start main game loop
         board = tiles.Board()
         currentPlayer = None
-        startTime = time.time()
+        startTime = None
 
         while len(lobby) > 1:
             # start next turn
@@ -276,7 +267,7 @@ def game_thread(queue: list, lobby: list, updateStack: list):
             try:
                 chunk = currentPlayer.message
                 # replace player message with random move if overtime
-                if time.time() - startTime > 0.3:
+                if time.time() - startTime > TIMEOUT:
                     chunk = random_move(currentPlayer, board)
 
                 # check if this message is populated
@@ -335,12 +326,13 @@ playerQueue = []
 playerLobby = []
 
 # constantly handle incomming connections
-statusThread = Thread(target=update_status, args=(
-    playerQueue, playerLobby, server, updateStack))
+statusThread = Thread(target=update_status, args=(playerQueue, playerLobby, server, updateStack))
 statusThread.start()
+
 # start game
-gameThread = Thread(target=game_thread, args=(
-    playerQueue, playerLobby, updateStack))
+gameThread = Thread(target=game_thread, args=(playerQueue, playerLobby, updateStack))
 gameThread.start()
+
+# infinite loop with threads running in background
 while True:
     continue
