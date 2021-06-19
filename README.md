@@ -1,4 +1,4 @@
-# Edward Yamamoto (22709905)
+# Networking Project
 
 _All functionality specified in the tasksheet was successfully implemented._
 
